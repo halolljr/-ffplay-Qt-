@@ -1,0 +1,13 @@
+.vs/
+include/
+lib/
+res/
+x64/
+*.mp4
+*.flv
+*.mkv
+*.eddx
+*.jpg
+*.png
+*.dll
+*.exe
