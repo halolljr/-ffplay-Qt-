@@ -20,7 +20,6 @@ class VideoCtl : public QObject
 
 public:
     //explicit VideoCtl(QObject *parent = nullptr);
-
     static VideoCtl* GetInstance();
     ~VideoCtl();
     /**
@@ -61,11 +60,8 @@ signals:
     /// </summary>
     /// <param name="bPaused">0-非暂停</param>
     void SigPauseStat(bool bPaused);
-
     void SigStop();
-
     void SigStopFinished();//停止播放完成
-
     void SigStartPlay(QString strFileName);
 public:
     void OnSpeed();
@@ -77,7 +73,6 @@ public:
     void OnSubVolume();
     void OnPause();
     void OnStop();
-
 private:
     explicit VideoCtl(QObject* parent = nullptr);
     /**
@@ -87,7 +82,6 @@ private:
      * @note
      */
     bool Init();
-
     /**
      * @brief	连接信号槽
      *
@@ -95,17 +89,23 @@ private:
      * @note
      */
     bool ConnectSignalSlots();
-
     int get_video_frame(VideoState* is, AVFrame* frame);
     int audio_thread(void* arg);
     int video_thread(void* arg);
     int subtitle_thread(void* arg);
-
     int synchronize_audio(VideoState* is, int nb_samples);
-
+    /// <summary>
+    /// 根据预期，设置AudioParams结构体;其中重点是sdl读取音频数据的回调函数
+    /// </summary>
+    /// <param name="opaque">：VideoState*</param>
+    /// <param name="wanted_channel_layout">预期的声道布局</param>
+    /// <param name="wanted_nb_channels">预期的声道数</param>
+    /// <param name="wanted_sample_rate">预期的采样率</param>
+    /// <param name="audio_hw_params">SDL预期希望的音频结构体</param>
+    /// <returns>SDL 打开的音频缓冲区的大小</returns>
     int audio_open(void* opaque, int64_t wanted_channel_layout, int wanted_nb_channels, int wanted_sample_rate, struct AudioParams* audio_hw_params);
     /// <summary>
-    /// 
+    /// 初始化解码器上下文并打开解码器；开始对应的解码线程；
     /// </summary>
     /// <param name="is"></param>
     /// <param name="stream_index">流索引</param>
@@ -114,7 +114,7 @@ private:
     int stream_has_enough_packets(AVStream* st, int stream_id, PacketQueue* queue);
     int is_realtime(AVFormatContext* s);
     /// <summary>
-    /// 
+    /// 打开多媒体文件源；打开流；读取相应的AVPacket到相应的包队列中（读码）
     /// </summary>
     /// <param name="CurStream"></param>
     void ReadThread(VideoState* CurStream);
@@ -125,7 +125,6 @@ private:
     /// <param name="filename">：媒体源</param>
     /// <returns>VideoState*</returns>
     VideoState* stream_open(const char* filename);
-
     void stream_cycle_channel(VideoState* is, int codec_type);
     void refresh_loop_wait_event(VideoState* is, SDL_Event* event);
     void seek_chapter(VideoState* is, int incr);
@@ -133,11 +132,9 @@ private:
     int queue_picture(VideoState* is, AVFrame* src_frame, double pts, double duration, int64_t pos, int serial);
     //更新音量
     void UpdateVolume(int sign, double step);
-
     void video_display(VideoState* is);
     int video_open(VideoState* is);
     void do_exit(VideoState*& is);
-
     int realloc_texture(SDL_Texture** texture, Uint32 new_format, int new_width, int new_height, SDL_BlendMode blendmode, int init_texture);
     void calculate_display_rect(SDL_Rect* rect, int scr_xleft, int scr_ytop, int scr_width, int scr_height, int pic_width, int pic_height, AVRational pic_sar);
     int upload_texture(SDL_Texture* tex, AVFrame* frame, struct SwsContext** img_convert_ctx);
@@ -145,11 +142,9 @@ private:
     void stream_component_close(VideoState* is, int stream_index);
     void stream_close(VideoState* is);
     double get_clock(Clock* c);
-
     void set_clock(Clock* c, double pts, int serial);
     void set_clock_speed(Clock* c, double speed);
     void init_clock(Clock* c, int* queue_serial);
-
     int get_master_sync_type(VideoState* is);
     double get_master_clock(VideoState* is);
     void check_external_clock_speed(VideoState* is);
@@ -160,22 +155,24 @@ private:
     double compute_target_delay(double delay, VideoState* is);
     double vp_duration(VideoState* is, Frame* vp, Frame* nextvp);
     void update_video_pts(VideoState* is, double pts, int64_t pos, int serial);
-
-
-
 public:
-
     void ffp_set_playback_rate(float rate);
     float ffp_get_playback_rate();
-
+    /// <summary>
+    /// 是否有变速请求
+    /// </summary>
+    /// <returns>true-有</returns>
     int ffp_get_playback_rate_change();
+    /// <summary>
+    /// 设置变速请求值
+    /// </summary>
+    /// <param name="change"></param>
     void ffp_set_playback_rate_change(int change);
 
     int64_t get_target_frequency();
     int     get_target_channels();
     int   is_normal_playback_rate();
 private:
-
     static VideoCtl* m_pInstance; //< 单例指针
 
     bool m_bInited;	//< 初始化标志
@@ -186,7 +183,6 @@ private:
     SDL_Window* window;
     SDL_Renderer* renderer;
     WId play_wid;//播放窗口
-
 
     /* options specified by the user */
     int screen_width;
@@ -199,12 +195,10 @@ private:
     int m_nFrameW;
     int m_nFrameH;
 
-
-
     float       pf_playback_rate;           // 播放速率
     int         pf_playback_rate_changed;   // 播放速率改变
 public:
-    // 变速相关
+    // 变速器
     sonicStreamStruct* audio_speed_convert;
 };
 

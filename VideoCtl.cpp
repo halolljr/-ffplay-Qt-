@@ -584,7 +584,6 @@ int VideoCtl::is_normal_playback_rate()
     {
         return 0;
     }
-
 }
 
 /* called to display each frame */
@@ -894,13 +893,18 @@ void VideoCtl::update_sample_display(VideoState* is, short* samples, int samples
     }
 }
 
-/* return the wanted number of samples to get better sync if sync_type is video
-* or external master clock */
+/// <summary>
+/// 计算音频时钟与主时钟（通常是视频时钟或外部时钟）之间的差异，
+/// 然后根据这个差异决定是否需要增加或减少当前音频帧的采样数，
+/// 从而使音频播放速度轻微调整，达到音视频同步的目的。
+/// </summary>
+/// <param name="is"></param>
+/// <param name="nb_samples">原始采样数，如果不需要调整(即音频不为主时钟)，函数最终会返回这个值。</param>
+/// <returns></returns>
 int VideoCtl::synchronize_audio(VideoState* is, int nb_samples)
 {
     int wanted_nb_samples = nb_samples;
-
-    /* if not master, then we try to remove or add samples to correct the clock */
+    //如果主同步时钟不是音频（例如是视频或外部时钟），那么音频就需要进行同步调整。只有在这种情况下，才会尝试调整采样数。
     if (get_master_sync_type(is) != AV_SYNC_AUDIO_MASTER) {
         double diff, avg_diff;
         int min_nb_samples, max_nb_samples;
@@ -935,28 +939,24 @@ int VideoCtl::synchronize_audio(VideoState* is, int nb_samples)
             is->audio_diff_cum = 0;
         }
     }
-
     return wanted_nb_samples;
 }
 
-/**
-* Decode one audio frame and return its uncompressed size.
-*
-* The processed audio frame is decoded, converted if required, and
-* stored in is->audio_buf, with size in bytes given by the return
-* value.
-*/
+/// <summary>
+/// 实现了音频解码、必要的重采样处理以及音频时钟的更新，为后续音频播放和同步提供数据。
+/// </summary>
+/// <param name="is"></param>
+/// <returns>重采样后的数据大小（或直接返回原始数据大小，如果没有重采样）</returns>
 int VideoCtl::audio_decode_frame(VideoState* is)
 {
-    int data_size, resampled_data_size;
-    int64_t dec_channel_layout;
-    av_unused double audio_clock0;
-    int wanted_nb_samples;
+    int data_size, resampled_data_size; //用于保存原始数据大小和重采样后的数据大小。
+    int64_t dec_channel_layout; //存储解码器实际使用的通道布局
+    av_unused double audio_clock0;  //用于保存解码前的音频时钟值（av_unused 表示此变量在某些编译器配置下可能不被使用）。
+	int wanted_nb_samples;  //经过同步调整后希望解码器输出的样本数量。
     Frame* af;
-
     if (is->paused)
         return -1;
-
+    //从音频帧队列中获取一帧数据
     do {
 #if defined(_WIN32)
         while (frame_queue_nb_remaining(&is->sampq) == 0) {
@@ -969,16 +969,18 @@ int VideoCtl::audio_decode_frame(VideoState* is)
             return -1;
         frame_queue_next(&is->sampq);
     } while (af->serial != is->audioq.serial);
-
+    //end
+    //计算当前音频帧中采样数据所占的字节数
     data_size = av_samples_get_buffer_size(NULL, av_frame_get_channels(af->frame),
         af->frame->nb_samples,
         (AVSampleFormat)af->frame->format, 1);
-
+    //确定通道布局
     dec_channel_layout =
         (af->frame->channel_layout && av_frame_get_channels(af->frame) == av_get_channel_layout_nb_channels(af->frame->channel_layout)) ?
         af->frame->channel_layout : av_get_default_channel_layout(av_frame_get_channels(af->frame));
+    //根据音频同步需求调整采样数。
     wanted_nb_samples = synchronize_audio(is, af->frame->nb_samples);
-
+    //配置重采样（SWR）上下文
     if (af->frame->format != is->audio_src.fmt ||
         dec_channel_layout != is->audio_src.channel_layout ||
         af->frame->sample_rate != is->audio_src.freq ||
@@ -1001,17 +1003,22 @@ int VideoCtl::audio_decode_frame(VideoState* is)
         is->audio_src.freq = af->frame->sample_rate;
         is->audio_src.fmt = (AVSampleFormat)af->frame->format;
     }
-
+    //重采样处理
     if (is->swr_ctx) {
+        //原始音频数据，通常是一个数组，每个元素对应一个音频通道的数据指针。
         const uint8_t** in = (const uint8_t**)af->frame->extended_data;
+        //输出缓冲区指针 is->audio_buf1。
         uint8_t** out = &is->audio_buf1;
+        //按比例转换为目标采样率下的样本数，并额外留出 256 个样本的余量。
         int out_count = (int64_t)wanted_nb_samples * is->audio_tgt.freq / af->frame->sample_rate + 256;
+        //计算输出缓冲区大小
         int out_size = av_samples_get_buffer_size(NULL, is->audio_tgt.channels, out_count, is->audio_tgt.fmt, 0);
         int len2;
         if (out_size < 0) {
             av_log(NULL, AV_LOG_ERROR, "av_samples_get_buffer_size() failed\n");
             return -1;
         }
+        //如果实际样本数和期望样本数不同，则调用 swr_set_compensation 调整重采样上下文，补偿采样数差异。
         if (wanted_nb_samples != af->frame->nb_samples) {
             if (swr_set_compensation(is->swr_ctx, (wanted_nb_samples - af->frame->nb_samples) * is->audio_tgt.freq / af->frame->sample_rate,
                 wanted_nb_samples * is->audio_tgt.freq / af->frame->sample_rate) < 0) {
@@ -1022,6 +1029,7 @@ int VideoCtl::audio_decode_frame(VideoState* is)
         av_fast_malloc(&is->audio_buf1, &is->audio_buf1_size, out_size);
         if (!is->audio_buf1)
             return AVERROR(ENOMEM);
+        //调用重采样函数
         len2 = swr_convert(is->swr_ctx, out, out_count, in, af->frame->nb_samples);
         if (len2 < 0) {
             av_log(NULL, AV_LOG_ERROR, "swr_convert() failed\n");
@@ -1039,7 +1047,7 @@ int VideoCtl::audio_decode_frame(VideoState* is)
         is->audio_buf = af->frame->data[0];
         resampled_data_size = data_size;
     }
-
+    //更新音频时钟
     audio_clock0 = is->audio_clock;
     /* update the audio clock with the pts */
     if (!std::isnan(af->pts))
@@ -1047,20 +1055,22 @@ int VideoCtl::audio_decode_frame(VideoState* is)
     else
         is->audio_clock = NAN;
     is->audio_clock_serial = af->serial;
-
     return resampled_data_size;
 }
 
-/* prepare a new audio buffer */
+/// <summary>
+/// SDL回调获取数据的函数
+/// </summary>
+/// <param name="opaque">：VideoState*</param>
+/// <param name="stream">SDL数据流</param>
+/// <param name="len">SDL数据流需要的大小</param>
 void sdl_audio_callback(void* opaque, Uint8* stream, int len)
 {
     VideoState* is = (VideoState*)opaque;
     int audio_size, len1;
-
+    //单例模式
     VideoCtl* pVideoCtl = VideoCtl::GetInstance();
-
     audio_callback_time = av_gettime_relative();
-
     while (len > 0) {
         // 从帧队列读取缓存
         if (is->audio_buf_index >= is->audio_buf_size) {        // 数据已经处理完毕了，需要读取新的
@@ -1084,21 +1094,25 @@ void sdl_audio_callback(void* opaque, Uint8* stream, int len)
                 {
                     // 先释放
                     sonicDestroyStream(pVideoCtl->audio_speed_convert);
-
                 }
                 // 再创建
                 pVideoCtl->audio_speed_convert = sonicCreateStream(pVideoCtl->get_target_frequency(),
                     pVideoCtl->get_target_channels());
-
                 // 设置变速系数
                 sonicSetSpeed(pVideoCtl->audio_speed_convert, pVideoCtl->ffp_get_playback_rate());
+                //确保音频在变速后，声音的音调依然保持原样，不会因为速度变化而失真。
+                //保持音高不变
                 sonicSetPitch(pVideoCtl->audio_speed_convert, 1.0);
+                //保持节奏不变：
                 sonicSetRate(pVideoCtl->audio_speed_convert, 1.0);
             }
+			// 不是正常播放则需要修改
+			// 需要修改  is->audio_buf_index is->audio_buf_size is->audio_buf
             if (!pVideoCtl->is_normal_playback_rate() && is->audio_buf)
             {
-                // 不是正常播放则需要修改
-                // 需要修改  is->audio_buf_index is->audio_buf_size is->audio_buf
+                // 当前音频缓冲区（is->audio_buf_size，以字节为单位）的大小转换为样本数。
+				//is->audio_tgt.channels 表示目标音频通道数。
+                //av_get_bytes_per_sample(is->audio_tgt.fmt) 返回目标采样格式中每个样本占用的字节数
                 int actual_out_samples = is->audio_buf_size /
                     (is->audio_tgt.channels * av_get_bytes_per_sample(is->audio_tgt.fmt));
                 // 计算处理后的点数
@@ -1106,6 +1120,7 @@ void sdl_audio_callback(void* opaque, Uint8* stream, int len)
                 int out_size = 0;
                 int num_samples = 0;
                 int sonic_samples = 0;
+                //根据目标采样格式判断数据类型，调用 Sonic 库的相应接口
                 if (is->audio_tgt.fmt == AV_SAMPLE_FMT_FLT)
                 {
                     out_ret = sonicWriteFloatToStream(pVideoCtl->audio_speed_convert,
@@ -1123,9 +1138,8 @@ void sdl_audio_callback(void* opaque, Uint8* stream, int len)
                     av_log(NULL, AV_LOG_ERROR, "sonic unspport ......\n");
                 }
                 num_samples = sonicSamplesAvailable(pVideoCtl->audio_speed_convert);
-                // 2通道  目前只支持2通道的
+                // 2通道  目前只支持2通道；得到输出缓冲区所需的总字节数。
                 out_size = (num_samples)*av_get_bytes_per_sample(is->audio_tgt.fmt) * is->audio_tgt.channels;
-
                 av_fast_malloc(&is->audio_buf1, &is->audio_buf1_size, out_size);
                 if (out_ret)
                 {
@@ -1148,16 +1162,15 @@ void sdl_audio_callback(void* opaque, Uint8* stream, int len)
                     is->audio_buf = is->audio_buf1;
                     //                    qDebug() << "mdy num_samples: " << num_samples;
                     //                    qDebug() << "orig audio_buf_size: " << is->audio_buf_size;
+                    //重新计算 is->audio_buf_size 为 sonic_samples 乘以通道数和每个采样的字节数，反映重采样后数据的总大小。
                     is->audio_buf_size = sonic_samples * is->audio_tgt.channels * av_get_bytes_per_sample(is->audio_tgt.fmt);
                     //                    qDebug() << "mdy audio_buf_size: " << is->audio_buf_size;
                     is->audio_buf_index = 0;
                 }
-
             }
         }
         if (is->audio_buf_size == 0)
             continue;
-
         len1 = is->audio_buf_size - is->audio_buf_index;
         if (len1 > len)
             len1 = len;
@@ -1186,12 +1199,17 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
 {
     SDL_AudioSpec wanted_spec, spec;
     const char* env;
+    //提供备选的通道数和采样率列表
     static const int next_nb_channels[] = { 0, 0, 1, 6, 2, 6, 4, 6 };
     static const int next_sample_rates[] = { 0, 44100, 48000, 96000, 192000 };
+    //end
+    
+    //设置为 next_sample_rates 数组最后一个元素的索引，通常用于选择一个较高的采样率作为备用。
     int next_sample_rate_idx = FF_ARRAY_ELEMS(next_sample_rates) - 1;
-
+	//获取环境变量 SDL_AUDIO_CHANNELS 的值。如果设置了这个环境变量，用户期望的通道数就由这个变量指定。
     env = SDL_getenv("SDL_AUDIO_CHANNELS");
     if (env) {
+        //将环境变量字符串转换为整数，得到期望的通道数
         wanted_nb_channels = atoi(env);
         wanted_channel_layout = av_get_default_channel_layout(wanted_nb_channels);
     }
@@ -1206,10 +1224,16 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
         av_log(NULL, AV_LOG_ERROR, "Invalid sample rate or channel count!\n");
         return -1;
     }
+    //选择一个“适合的”备选采样率
     while (next_sample_rate_idx && next_sample_rates[next_sample_rate_idx] >= wanted_spec.freq)
         next_sample_rate_idx--;
     wanted_spec.format = AUDIO_S16SYS;
     wanted_spec.silence = 0;
+    //wanted_spec.freq / SDL_AUDIO_MAX_CALLBACKS_PER_SEC--计算每个回调周期目标处理的样本数量。
+    //wanted_spec.freq 是采样率（例如 44100 Hz）
+    //SDL_AUDIO_MAX_CALLBACKS_PER_SEC 表示每秒最大回调次数
+	//av_log2(...)计算前面那个数值的以 2 为底的对数。通常返回的是一个整数（floor(log2(x))），表示接近这个数值的二的幂次。
+	//2 << av_log2(...)等价于 2 * (1 << av_log2(...))，也就是 2 乘以 2 的某个幂次。这样可以得到一个基于目标样本数的、较为“对齐”的缓冲区大小。
     wanted_spec.samples = FFMAX(SDL_AUDIO_MIN_BUFFER_SIZE, 2 << av_log2(wanted_spec.freq / SDL_AUDIO_MAX_CALLBACKS_PER_SEC));
     wanted_spec.callback = sdl_audio_callback;
     wanted_spec.userdata = opaque;
@@ -1228,7 +1252,6 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
         }
         wanted_channel_layout = av_get_default_channel_layout(wanted_spec.channels);
     }
-
     if (spec.channels != wanted_spec.channels) {
         wanted_channel_layout = av_get_default_channel_layout(spec.channels);
         if (!wanted_channel_layout) {
@@ -1264,7 +1287,9 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
     audio_hw_params->freq = spec.freq;
     audio_hw_params->channel_layout = wanted_channel_layout;
     audio_hw_params->channels = spec.channels;
+    //计算一帧大小
     audio_hw_params->frame_size = av_samples_get_buffer_size(NULL, audio_hw_params->channels, 1, audio_hw_params->fmt, 1);
+    //计算一秒的大小
     audio_hw_params->bytes_per_sec = av_samples_get_buffer_size(NULL, audio_hw_params->channels, audio_hw_params->freq, audio_hw_params->fmt, 1);
     if (audio_hw_params->bytes_per_sec <= 0 || audio_hw_params->frame_size <= 0) {
         av_log(NULL, AV_LOG_ERROR, "av_samples_get_buffer_size failed\n");
@@ -1303,12 +1328,14 @@ int VideoCtl::stream_component_open(VideoState* is, int stream_index)
     case AVMEDIA_TYPE_VIDEO: is->last_video_stream = stream_index; break;
     }
     avctx->codec_id = codec->id;
+    //设置分辨率级别
     if (stream_lowres > av_codec_get_max_lowres(codec)) {
         av_log(avctx, AV_LOG_WARNING, "The maximum value for lowres supported by the decoder is %d\n",
             av_codec_get_max_lowres(codec));
         stream_lowres = av_codec_get_max_lowres(codec);
     }
     av_codec_set_lowres(avctx, stream_lowres);
+    //end
 #if FF_API_EMU_EDGE
     if (stream_lowres) avctx->flags |= CODEC_FLAG_EMU_EDGE;
 #endif
@@ -1317,22 +1344,27 @@ int VideoCtl::stream_component_open(VideoState* is, int stream_index)
         avctx->flags |= CODEC_FLAG_EMU_EDGE;
 #endif
     opts = nullptr;//filter_codec_opts(codec_opts, avctx->codec_id, ic, ic->streams[stream_index], codec);
+    //让解码器自动选择线程数
     if (!av_dict_get(opts, "threads", NULL, 0))
         av_dict_set(&opts, "threads", "auto", 0);
+    //告诉解码器使用低分辨率模式（通常用于减小解码负担或适应设备性能）
     if (stream_lowres)
         av_dict_set_int(&opts, "lowres", stream_lowres, 0);
+	//解码器输出的帧会带有引用计数，这有助于管理内存和避免数据复制，尤其在多线程和复杂处理流程中更安全。
     if (avctx->codec_type == AVMEDIA_TYPE_VIDEO || avctx->codec_type == AVMEDIA_TYPE_AUDIO)
         av_dict_set(&opts, "refcounted_frames", "1", 0);
     //打开解码器
     if ((ret = avcodec_open2(avctx, codec, &opts)) < 0) {
         goto fail;
     }
+    //经过之前的设置，预期所有提供的选项都应该被解码器所识别并从字典中移除。
     if ((t = av_dict_get(opts, "", NULL, AV_DICT_IGNORE_SUFFIX))) {
         av_log(NULL, AV_LOG_ERROR, "Option %s not found.\n", t->key);
         ret = AVERROR_OPTION_NOT_FOUND;
         goto fail;
     }
     is->eof = 0;
+    //AVDISCARD_DEFAULT 通常表示保留需要参考的帧，而丢弃一些可丢弃的帧。
     ic->streams[stream_index]->discard = AVDISCARD_DEFAULT;
     switch (avctx->codec_type) {
     case AVMEDIA_TYPE_AUDIO:
@@ -1344,6 +1376,7 @@ int VideoCtl::stream_component_open(VideoState* is, int stream_index)
         if ((ret = audio_open(is, channel_layout, nb_channels, sample_rate, &is->audio_tgt)) < 0)
             goto fail;
         is->audio_hw_buf_size = ret;
+        //初始化先设置audio_src等于audio_tgt
         is->audio_src = is->audio_tgt;
         is->audio_buf_size = 0;
         is->audio_buf_index = 0;
@@ -2205,10 +2238,8 @@ bool VideoCtl::Init()
 bool VideoCtl::ConnectSignalSlots()
 {
     connect(this, &VideoCtl::SigStop, &VideoCtl::OnStop);
-
     return true;
 }
-
 
 VideoCtl* VideoCtl::m_pInstance = new VideoCtl();
 

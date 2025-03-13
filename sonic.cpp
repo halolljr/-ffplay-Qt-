@@ -285,8 +285,7 @@ static void freeStreamBuffers(
 
 /* Destroy the sonic stream. */
 // 销毁流
-void sonicDestroyStream(
-    sonicStream stream)
+void sonicDestroyStream(sonicStream stream)
 {
     freeStreamBuffers(stream);
     free(stream);
@@ -353,7 +352,7 @@ static int allocateStreamBuffers(
 
 /* Create a sonic stream.  Return NULL only if we are out of memory and cannot
    allocate the stream. */
-   // 创建一个音频流
+   // 创建一个音频流，参数包括目标采样率和目标通道数
 sonicStream sonicCreateStream(
     int sampleRate,
     int numChannels)
@@ -701,6 +700,7 @@ int sonicFlushStream(
 }
 
 /* Return the number of samples in the output buffer */
+//获取 Sonic 流中已经处理好的样本数（即可供读取的样本数）。
 int sonicSamplesAvailable(
     sonicStream stream)
 {

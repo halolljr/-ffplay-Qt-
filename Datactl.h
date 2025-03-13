@@ -126,12 +126,12 @@ typedef struct Frame {
 //帧队列
 typedef struct FrameQueue {
 	Frame queue[FRAME_QUEUE_SIZE];	// FRAME_QUEUE_SIZE 最⼤size, 数字太⼤时会占⽤⼤量的内存，需要注意该值的设置
-	int rindex;	// 读索引。待播放时读取此帧进⾏播放，播放后此帧成为上⼀帧
+	int rindex;	// 读索引。待播放时读取此帧进⾏播放，播放后此帧成为上⼀帧,索引往下
 	int windex;	// 写索引
 	int size;	// 当前总帧数
 	int max_size;	// 可存储最⼤帧数
 	int keep_last;	// = 1说明要在队列⾥⾯保持最后⼀帧的数据不释放，只在销毁队列的时候才将其真正释放
-	int rindex_shown;	// 初始化为0，配合keep_last=1使⽤
+	int rindex_shown;	//记录从 rindex 开始已经“显示”但还未被正式移除的帧数量。如果设置了 keep_last，第一个要显示的帧就不会被立即移除，而是通过将 rindex_shown 设为 1 来保留。
 	SDL_mutex* mutex;	// 互斥量
 	SDL_cond* cond;	// 条件变量
 	PacketQueue* pktq;	// 数据包缓冲队列
@@ -203,12 +203,12 @@ typedef struct VideoState {
 	// 若经过重采样则指向audio_buf1，否则指向frame中的⾳频
 	uint8_t* audio_buf;	// 指向需要重采样的数据
 	uint8_t* audio_buf1;	// 指向重采样后的数据
-	// 待播放的⼀帧⾳频数据(audio_buf指向)的⼤⼩
-	unsigned int audio_buf_size; /* in bytes */
+	// 待播放的⼀帧⾳频数据(audio_buf指向)的⼤⼩（字节）
+	unsigned int audio_buf_size; 
 	// 申请到的⾳频缓冲区audio_buf1的实际尺⼨
 	unsigned int audio_buf1_size;
 	// 更新拷⻉位置 当前⾳频帧中已拷⼊SDL⾳频缓冲区的位置索引(指向第⼀个待拷⻉字节)
-	int audio_buf_index; /* in bytes */
+	int audio_buf_index; 
 	// 当前⾳频帧中尚未拷⼊SDL⾳频缓冲区的数据量:
 	// audio_buf_size = audio_buf_index + audio_write_buf_size
 	int audio_write_buf_size;
