@@ -457,17 +457,29 @@ void VideoCtl::stream_seek(VideoState* is, int64_t pos, int64_t rel)
     }
 }
 
-/* pause or resume the video */
+/// <summary>
+/// 临时取消暂停（或者说“解冻”播放器）
+/// </summary>
+/// <param name="is"></param>
 void VideoCtl::stream_toggle_pause(VideoState* is)
 {
     if (is->paused) {
+		// 当处于暂停状态时，准备恢复播放：
+		// 将当前时间与上次更新时间之差累加到 frame_timer 上，
+		// 使得恢复播放时能够补偿暂停期间的时间间隔。
         is->frame_timer += av_gettime_relative() / 1000000.0 - is->vidclk.last_updated;
+		// 如果 read_pause_return 没有返回 AVERROR(ENOSYS)（表示该接口有效），
+	    // 则取消 video clock 的暂停标志。
         if (is->read_pause_return != AVERROR(ENOSYS)) {
             is->vidclk.paused = 0;
-        }
+		}
+        // 更新 video clock，这里使用当前 video clock 的值重新设置时钟，
+		// 使得 last_updated 与当前时间对齐，pts_drift 会根据新时间重新计算。
         set_clock(&is->vidclk, get_clock(&is->vidclk), is->vidclk.serial);
     }
+    // 无论暂停状态如何，都更新外部时钟 extclk，使其与当前时间同步
     set_clock(&is->extclk, get_clock(&is->extclk), is->extclk.serial);
+    // 最后切换全局的暂停状态。将 paused 标志取反，并同步设置音频（audclk）、视频（vidclk）和外部（extclk）时钟的暂停标志。
     is->paused = is->audclk.paused = is->vidclk.paused = is->extclk.paused = !is->paused;
 }
 
@@ -477,12 +489,17 @@ void VideoCtl::toggle_pause(VideoState* is)
     is->step = 0;
 }
 
-
+/// <summary>
+/// 当播放暂停时，通常不会自动获取并显示新帧。但在执行 seek 后，用户希望看到定位到新位置的那一帧。
+/// </summary>
+/// <param name="is"></param>
 void VideoCtl::step_to_next_frame(VideoState* is)
 {
     /* if the stream is paused unpause it, then step */
     if (is->paused)
         stream_toggle_pause(is);
+    //将 is->step 设置为 1，表示下一帧需要被读取并显示。
+    //这样就能保证，即使播放器整体处于暂停状态，也能通过单步操作获得并显示一帧数据。
     is->step = 1;
 }
 
@@ -745,9 +762,9 @@ int VideoCtl::get_video_frame(VideoState* is, AVFrame* frame)
 
         if (frame->pts != AV_NOPTS_VALUE)
             dpts = av_q2d(is->video_st->time_base) * frame->pts;
-
+		//根据输入上下文、视频流和当前帧信息来推测并设置帧的采样宽高比（SAR），便于后续正确显示图像。
         frame->sample_aspect_ratio = av_guess_sample_aspect_ratio(is->ic, is->video_st, frame);
-
+        //如果所有条件满足，认为当前帧太“早”，需要丢弃。
         if (framedrop > 0 || (framedrop && get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER)) {
             if (frame->pts != AV_NOPTS_VALUE) {
                 double diff = dpts - get_master_clock(is);
@@ -779,18 +796,19 @@ int VideoCtl::audio_thread(void* arg)
 
     if (!frame)
         return AVERROR(ENOMEM);
-
     do {
         if ((got_frame = decoder_decode_frame(&is->auddec, frame, NULL)) < 0)
             goto the_end;
-
         if (got_frame) {
+            //每个采样点对应的时间单位是 1 / frame->sample_rate 秒。
             tb = { 1, frame->sample_rate };
             if (!(af = frame_queue_peek_writable(&is->sampq)))
                 goto the_end;
+            //该帧的显示时间（以秒为单位）
             af->pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
             af->pos = av_frame_get_pkt_pos(frame);
             af->serial = is->auddec.pkt_serial;
+            //当前帧的持续时间:采样数除以采样率
             af->duration = av_q2d({ frame->nb_samples, frame->sample_rate });
             av_frame_move_ref(af->frame, frame);
             frame_queue_push(&is->sampq);
@@ -824,9 +842,11 @@ int VideoCtl::video_thread(void* arg)
             goto the_end;
         if (!ret)
             continue;
-
+        //一帧的显示时间
         duration = (frame_rate.num && frame_rate.den ? av_q2d(/*(AVRational) */{ frame_rate.den, frame_rate.num }) : 0);
+        //当前帧的pts（以秒显示）
         pts = (frame->pts == AV_NOPTS_VALUE) ? NAN : frame->pts * av_q2d(tb);
+        //将视频帧入队列
         ret = queue_picture(is, frame, pts, duration, av_frame_get_pkt_pos(frame), is->viddec.pkt_serial);
         av_frame_unref(frame);
 
@@ -1380,30 +1400,32 @@ int VideoCtl::stream_component_open(VideoState* is, int stream_index)
         is->audio_src = is->audio_tgt;
         is->audio_buf_size = 0;
         is->audio_buf_index = 0;
-        /* init averaging filter */
+        //初始化音频同步平均滤波器
         is->audio_diff_avg_coef = exp(log(0.01) / AUDIO_DIFF_AVG_NB);
         is->audio_diff_avg_count = 0;
         /* since we do not have a precise anough audio FIFO fullness,
         we correct audio sync only if larger than this threshold */
+        //设置音频同步校正阈值
         is->audio_diff_threshold = (double)(is->audio_hw_buf_size) / is->audio_tgt.bytes_per_sec;
         is->audio_stream = stream_index;
         is->audio_st = ic->streams[stream_index];
-        //创建音频解码线程，开始音频解码
         decoder_init(&is->auddec, avctx, &is->audioq, is->continue_read_thread);
+        //针对特殊格式设置起始PTS
         if ((is->ic->iformat->flags & (AVFMT_NOBINSEARCH | AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK)) && !is->ic->iformat->read_seek) {
             is->auddec.start_pts = is->audio_st->start_time;
             is->auddec.start_pts_tb = is->audio_st->time_base;
         }
         packet_queue_start(is->auddec.queue);
+        //创建音频解码线程，开始音频解码
         is->auddec.decode_thread = std::thread(&VideoCtl::audio_thread, this, is);
         SDL_PauseAudio(0);
         break;
     case AVMEDIA_TYPE_VIDEO:
         is->video_stream = stream_index;
         is->video_st = ic->streams[stream_index];
-        //创建视频解码线程，开始视频解码
         decoder_init(&is->viddec, avctx, &is->videoq, is->continue_read_thread);
         packet_queue_start(is->viddec.queue);
+        //创建视频解码线程，开始视频解码
         is->viddec.decode_thread = std::thread(&VideoCtl::video_thread, this, is);
         is->queue_attachments_req = 1;
         break;
@@ -1632,6 +1654,7 @@ void VideoCtl::ReadThread(VideoState* is)
             is->seek_req = 0;
             is->queue_attachments_req = 1;
             is->eof = 0;
+            //seek（定位）操作后如果处于暂停状态，通常希望立即显示定位后的新画面，而不会一直停留在上一个画面上。
             if (is->paused)
                 step_to_next_frame(is);
         }
@@ -1678,6 +1701,7 @@ void VideoCtl::ReadThread(VideoState* is)
                     packet_queue_put_nullpacket(&is->subtitleq, is->subtitle_stream);
                 is->eof = 1;
             }
+            //检查是否有 I/O 错误
             if (ic->pb && ic->pb->error)
                 break;
             SDL_LockMutex(wait_mutex);

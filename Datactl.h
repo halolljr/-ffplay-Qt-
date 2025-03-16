@@ -173,7 +173,7 @@ typedef struct VideoState {
 	int seek_req;	// 标识⼀次seek请求
 	int seek_flags;	// seek标志，诸如AVSEEK_FLAG_BYTE等
 	int64_t seek_pos;	// 请求seek的⽬标位置(当前位置+增量)
-	int64_t seek_rel;	// 本次seek的位置增量
+	int64_t seek_rel;	// >0-用户请求在目标位置之前;<0-用户希望在目标位置之后的一个区间内进行搜索
 	int read_pause_return;
 	AVFormatContext* ic;	// iformat的上下⽂
 	int realtime;	// =1为实时流
@@ -381,7 +381,6 @@ static void packet_queue_start(PacketQueue* q)
 	//初始化清理包
 	av_init_packet(&flush_pkt);
 	flush_pkt.data = (uint8_t*)&flush_pkt;
-
 	SDL_LockMutex(q->mutex);
 	q->abort_request = 0;
 	//放入了一个flush_pkt，目的新增serial以区分之前的队列，触发解码器清空⾃身缓存 avcodec_flush_buffers()
@@ -612,7 +611,6 @@ static int decoder_decode_frame(Decoder* d, AVFrame* frame, AVSubtitle* sub) {
 					return -1;
 			}
 			if (d->queue->serial != d->pkt_serial) {
-				// darren自己的代码
 				printf("%s(%d) discontinue:queue->serial:%d,pkt_serial:%d\n",
 					__FUNCTION__, __LINE__, d->queue->serial, d->pkt_serial);
 				av_packet_unref(&pkt); // fixed me? 释放要过滤的packet
