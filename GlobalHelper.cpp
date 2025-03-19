@@ -13,6 +13,7 @@ const QString PLAYER_CONFIG_BASEDIR = QDir::tempPath();
 const QString PLAYER_CONFIG = "player_config.ini";
 
 const QString APP_VERSION = "0.1.0";
+//QSttings读取到的键值不存在则使用原始的键值
 
 GlobalHelper::GlobalHelper()
 {

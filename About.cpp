@@ -28,12 +28,8 @@ bool About::Init()
 
 	QString strVersion = QString("版本：%1\n时间：%2").arg(GlobalHelper::GetAppVersion()).arg(QString(__DATE__) + " " + QString(__TIME__));
 	ui->VersionLabel->setText(strVersion);
-
-
 	return true;
 }
-
-
 
 void About::mousePressEvent(QMouseEvent* event)
 {
@@ -43,14 +39,12 @@ void About::mousePressEvent(QMouseEvent* event)
 		/*鼠标全局位置-窗口当前位置*/
 		m_DragPosition = event->globalPos() - this->pos();
 	}
-
 	QWidget::mousePressEvent(event);
 }
 
 void About::mouseReleaseEvent(QMouseEvent* event)
 {
 	m_bMoveDrag = false;
-
 	QWidget::mouseReleaseEvent(event);
 }
 
@@ -60,10 +54,8 @@ void About::mouseMoveEvent(QMouseEvent* event)
 	{
 		move(event->globalPos() - m_DragPosition);
 	}
-
 	QWidget::mouseMoveEvent(event);
 }
-
 
 void About::on_ClosePushButton_clicked()
 {

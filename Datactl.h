@@ -251,6 +251,7 @@ typedef struct VideoState {
 	SDL_cond* continue_read_thread;	// 当读取数据队列满了后进⼊休眠时，可以通过该condition唤醒读线程
 } VideoState;
 
+//缓冲包
 static AVPacket flush_pkt;
 
 //数据包队列存放数据包（供队列内部使用）
@@ -311,7 +312,6 @@ static int packet_queue_put_nullpacket(PacketQueue* q, int stream_index)
 	pkt->stream_index = stream_index;
 	return packet_queue_put(q, pkt);
 }
-
 
 /// <summary>
 /// 数据包队列初始化

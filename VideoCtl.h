@@ -65,6 +65,10 @@ signals:
     void SigStartPlay(QString strFileName);
 public:
     void OnSpeed();
+    /// <summary>
+    /// 与SigPlaySeek连接
+    /// </summary>
+    /// <param name="dPercent"></param>
     void OnPlaySeek(double dPercent);
     void OnPlayVolume(double dPercent);
     void OnSeekForward();

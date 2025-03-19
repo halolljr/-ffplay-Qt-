@@ -27,12 +27,12 @@ public:
     /// <param name="nSeconds">秒数</param>
     void OnVideoTotalSeconds(int nSeconds);
 	/// <summary>
-    /// 当前播放的时长，槽函数，sender为VideoCtlSig的VideoPlaySeconds
+    /// 当前播放的时长，槽函数，sender为VideoCtl的SigVideoPlaySeconds
     /// </summary>
     /// <param name="nSeconds">秒数</param>
     void OnVideoPlaySeconds(int nSeconds);
 	/// <summary>
-	/// 更新播放的音量，并存储在配置文件中，sender为VideoCtl的SigVideoVolume
+	/// 更新界面层的音量显示，并存储在配置文件中，sender为VideoCtl的SigVideoVolume
 	/// </summary>
 	/// <param name="dPercent">音量系数</param>
     void OnVideopVolume(double dPercent);
@@ -50,11 +50,19 @@ public:
 	/// </summary>
 	/// <param name="speed">float</param>
     void OnSpeed(float speed);
+
 private:
+    /// <summary>
+    /// 与CustomSlider::SigCustomSliderValueChanged连接
+    /// </summary>
     void OnPlaySliderValueChanged();
     void OnVolumeSliderValueChanged();
+
 private slots:
     void on_PlayOrPauseBtn_clicked();
+    /// <summary>
+    /// 一键静音或者恢复到原来的音量
+    /// </summary>
     void on_VolumeBtn_clicked();
     void on_StopBtn_clicked();
     void on_SettingBtn_clicked();
@@ -64,20 +72,36 @@ private slots:
     /// <returns>bool 成功与否</returns>
     bool ConnectSignalSlots();
     void on_speedBtn_clicked();
-
 signals:
     void SigShowOrHidePlaylist();	//< 显示或隐藏信号
-    void SigPlaySeek(double dPercent); ///< 调整播放进度
+    /// <summary>
+    /// 与VideoCtl::OnPlaySeek连接
+    /// </summary>
+    /// <param name="dPercent">位置系数 double</param>
+    void SigPlaySeek(double dPercent); 
+    /// <summary>
+    /// 与VideoCtl::OnPlayVolume连接
+    /// </summary>
+    /// <param name="dPercent">double 音量系数</param>
     void SigPlayVolume(double dPercent);
+    /// <summary>
+    /// 与VideoCtl::OnPause连接
+    /// </summary>
     void SigPlayOrPause();
+    /// <summary>
+    /// 与VideoCtl::OnStop连接
+    /// </summary>
     void SigStop();
     void SigForwardPlay();
     void SigBackwardPlay();
     void SigShowMenu();
     void SigShowSetting();
+    /// <summary>
+    /// 与VideoCtl::OnSpeed连接
+    /// </summary>
     void SigSpeed();
 private:
 	Ui::CtrlBarClass *ui;
 	int m_nTotalPlaySeconds;
-	double m_dLastVolumePercent;
+	double m_dLastVolumePercent;    //最近更新的音量系数
 };
