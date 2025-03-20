@@ -51,7 +51,9 @@ void GlobalHelper::SavePlaylist(QStringList& playList)
 	//QString strPlayerConfigFileName = QCoreApplication::applicationDirPath() + QDir::separator() + PLAYER_CONFIG;
 	QString strPlayerConfigFileName = PLAYER_CONFIG_BASEDIR + QDir::separator() + PLAYER_CONFIG;
 	QSettings settings(strPlayerConfigFileName, QSettings::IniFormat);
+	//开始写入一个数组
 	settings.beginWriteArray("playlist");
+	//以键值对的形式写入配置文件
 	for (int i = 0; i < playList.size(); ++i)
 	{
 		settings.setArrayIndex(i);

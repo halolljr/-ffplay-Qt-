@@ -71,9 +71,21 @@ public:
     /// <param name="dPercent"></param>
     void OnPlaySeek(double dPercent);
     void OnPlayVolume(double dPercent);
+    /// <summary>
+    /// 与Player::SigSeekForward连接，前进X（5）秒
+    /// </summary>
     void OnSeekForward();
+    /// <summary>
+    /// 与Player::SigSeekBack连接，后退X（5）秒
+    /// </summary>
     void OnSeekBack();
+    /// <summary>
+    /// 与Player::SigAddVolume连接，增加Y（10）音量
+    /// </summary>
     void OnAddVolume();
+    /// <summary>
+    /// 与Player::SigSubVolume连接，降低Y（10）音量
+    /// </summary>
     void OnSubVolume();
     void OnPause();
     void OnStop();

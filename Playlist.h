@@ -19,8 +19,6 @@ public:
 	Playlist(QWidget *parent = nullptr);
 	~Playlist();
     bool Init();
-
-
     /**
      * @brief	获取播放列表状态
      *
@@ -66,15 +64,11 @@ protected:
 signals:
     void SigUpdateUi();	//< 界面排布更新
     void SigPlay(QString strFile); //< 播放文件
-
 private:
     bool InitUi();
     bool ConnectSignalSlots();
-
 private slots:
-
     void on_List_itemDoubleClicked(QListWidgetItem* item);
-
 private:
 	Ui::PlaylistClass *ui;
     int m_nCurrentPlayListIndex;
