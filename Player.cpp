@@ -66,20 +66,22 @@ Player::~Player()
 
 bool Player::Init()
 {
-	QWidget* em = new QWidget(this);
 	//没有直接将类升级而是在此设置widget
 	/*右侧播放列表*/
+	QWidget* em = new QWidget(this);
 	/*设置QDockWidget的标题栏为em*/
 	ui->PlaylistWid->setTitleBarWidget(em);
 	/*设置QDockWidget的内容为m_stPlaylist*/
 	ui->PlaylistWid->setWidget(&m_stPlaylist);
 	//ui->PlaylistWid->setFixedWidth(100);
+
 	QWidget* emTitle = new QWidget(this);
 	/*上方标题栏*/
 	/*设置QDockWidget的标题栏为emTitle*/
 	ui->TitleWid->setTitleBarWidget(emTitle);
 	/*设置QDockWidget的内容为m_stTitle*/
 	ui->TitleWid->setWidget(&m_stTitle);
+	
 	//FramelessHelper *pHelper = new FramelessHelper(this); //无边框管理
 	//pHelper->activateOn(this);  //激活当前窗体
 	//pHelper->setTitleHeight(ui->TitleWid->height());  //设置窗体的标题栏高度
@@ -94,7 +96,7 @@ bool Player::Init()
 	}
 	/*
 		CtrlBarWid：播放控制（类提升）
-		ShowWid：播放界面（类提升）
+		ShowWid：播放界面（类提升），即使show类没有重写contextMenuEvent，且在全屏的时候为独立窗口焦点，contextMenuEvent也有效
 	*/
 	if (ui->CtrlBarWid->Init() == false ||
 		m_stPlaylist.Init() == false ||
@@ -179,7 +181,7 @@ bool  Player::ConnectSignalSlots()
 	connect(this, &Player::SigSeekBack, VideoCtl::GetInstance(), &VideoCtl::OnSeekBack);
 	connect(this, &Player::SigAddVolume, VideoCtl::GetInstance(), &VideoCtl::OnAddVolume);
 	connect(this, &Player::SigSubVolume, VideoCtl::GetInstance(), &VideoCtl::OnSubVolume);
-	connect(this, &Player::SigOpenFile, &m_stPlaylist, &Playlist::OnAddFileAndPlay);
+	connect(this, &Player::SigOpenFile, &m_stPlaylist, &Playlist::OnAddFile);
 
 	connect(VideoCtl::GetInstance(), &VideoCtl::SigSpeed, ui->CtrlBarWid, &CtrlBar::OnSpeed);
 	connect(VideoCtl::GetInstance(), &VideoCtl::SigVideoTotalSeconds, ui->CtrlBarWid, &CtrlBar::OnVideoTotalSeconds);
@@ -271,6 +273,7 @@ void  Player::mouseMoveEvent(QMouseEvent* event)
 void  Player::contextMenuEvent(QContextMenuEvent* event)
 {
 	m_stMenu.exec(event->globalPos());
+	event->accept();
 }
 
 void Player::OnFullScreenPlay()
@@ -316,8 +319,12 @@ void Player::OnFullScreenPlay()
 		m_stCtrlbarAnimationShow->start();
 		m_bFullscreenCtrlBarShow = true;
 		m_stFullscreenMouseDetectTimer.start();
-
-		this->setFocus();
+		//调用this->setFocus()，会出现无法"按下回车键以退出的情况"
+		//this->setFocus();
+		//activateWindow() 函数用于将窗口设置为活动窗口，确保其能够接收用户输入和事件。
+		ui->ShowWid->activateWindow();
+		//setFocus() 函数用于将键盘焦点设置到指定的控件，使其能够接收键盘事件
+		ui->ShowWid->setFocus();
 	}
 	else
 	{

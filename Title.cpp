@@ -5,7 +5,6 @@
 #include <QFileDialog>
 #include "Title.h"
 #include "globalhelper.h"
-
 #pragma execution_character_set("utf-8")
 Title::Title(QWidget *parent)
 	: QWidget(parent)
@@ -64,7 +63,6 @@ bool Title::InitUi()
 	GlobalHelper::SetIcon(ui->MaxBtn, 9, QChar(0xf2d0));
 	GlobalHelper::SetIcon(ui->MinBtn, 9, QChar(0xf2d1));
 	GlobalHelper::SetIcon(ui->CloseBtn, 9, QChar(0xf00d));
-
 	GlobalHelper::SetIcon(ui->FullScreenBtn, 9, QChar(0xf065));
 
 	//ui->LogoLab->setToolTip("显示主菜单");

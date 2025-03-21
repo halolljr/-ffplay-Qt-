@@ -101,7 +101,9 @@ private:
      */
     bool ConnectSignalSlots();
 
-
+    /// <summary>
+    /// 一旦帧的宽高变了或者显示窗口变化了
+    /// </summary>
     void ChangeShow();
 signals:
     void SigOpenFile(QString strFileName);///< 增加视频文件

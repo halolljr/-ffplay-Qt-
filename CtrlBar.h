@@ -92,6 +92,9 @@ signals:
     /// 与VideoCtl::OnStop连接
     /// </summary>
     void SigStop();
+    /// <summary>
+    /// 与Playlist::OnForwardPlay连接
+    /// </summary>
     void SigForwardPlay();
     void SigBackwardPlay();
     void SigShowMenu();

@@ -68,7 +68,8 @@ private:
     //显示、隐藏播放列表
     void OnShowOrHidePlaylist();
     /**
-    * @brief	全屏播放
+    * @brief	全屏播放,与多个全屏信号连接，是最终的执行代码
+    * 疑问：
     */
     void OnFullScreenPlay();
     void OnCtrlBarAnimationTimeOut();

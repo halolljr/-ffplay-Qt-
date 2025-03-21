@@ -73,7 +73,6 @@ bool Playlist::InitUi()
 
 	//ui->List->addItems(strListPlaylist);
 
-
 	return true;
 }
 
@@ -131,7 +130,6 @@ void Playlist::OnAddFile(QString strFileName)
 	{
 		return;
 	}
-
 
 	QFileInfo fileInfo(strFileName);
 	QList<QListWidgetItem*> listItem = ui->List->findItems(fileInfo.fileName(), Qt::MatchExactly);

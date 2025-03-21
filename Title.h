@@ -1,12 +1,10 @@
 ﻿#pragma once
-
 #include <QWidget>
 #include "ui_Title.h"
 #include <QMouseEvent>
 #include <QMenu>
 #include <QActionGroup>
 #include <QAction>
-
 #include "about.h"
 QT_BEGIN_NAMESPACE
 namespace Ui { class TitleClass; };
@@ -47,21 +45,17 @@ public:
     void OnPlay(QString strMovieName);
     void OnStopFinished();
 signals:
-    void SigCloseBtnClicked();	//< 点击关闭按钮
-    void SigMinBtnClicked();	//< 点击最小化按钮
-    void SigMaxBtnClicked();	//< 点击最大化按钮
-    void SigDoubleClicked();	//< 双击标题栏
-
-    void SigFullScreenBtnClicked(); ///< 点击全屏按钮
-
+    void SigCloseBtnClicked();	// 点击关闭按钮
+    void SigMinBtnClicked();	// 点击最小化按钮
+    void SigMaxBtnClicked();	// 点击最大化按钮
+    void SigDoubleClicked();	// 双击标题栏（与最大化按钮槽函数连接）
+    void SigFullScreenBtnClicked(); /// 点击全屏按钮
     void SigOpenFile(QString strFileName); //打开文件
     void SigShowMenu();
 private:
 	Ui::TitleClass *ui;
 	QString m_strMovieName;
-
 	QMenu m_stMenu;
 	QActionGroup m_stActionGroup;
-
 	About about;
 };
