@@ -29,15 +29,27 @@ static int64_t audio_callback_time;
 int VideoCtl::realloc_texture(SDL_Texture** texture, Uint32 new_format, int new_width, int new_height, SDL_BlendMode blendmode, int init_texture)
 {
     Uint32 format;
-    int access, w, h;
+    int access, w, h;   //access访问模式
+    // 查询当前纹理的信息
+    //texture：要查询的纹理对象。
+	//format：指向Uint32的指针，用于接收纹理的像素格式。
+	//access：指向int的指针，用于接收纹理的访问模式。
+    //w：指向int的指针，用于接收纹理的宽度。
+    //h：指向int的指针，用于接收纹理的高度。
     if (SDL_QueryTexture(*texture, &format, &access, &w, &h) < 0 || new_width != w || new_height != h || new_format != format) {
         void* pixels;
         int pitch;
+        // 销毁旧的纹理
         SDL_DestroyTexture(*texture);
+        // 创建新的纹理
+        //访问模式（此处为SDL_TEXTUREACCESS_STREAMING，表示纹理的数据可以被频繁更新）
         if (!(*texture = SDL_CreateTexture(renderer, new_format, SDL_TEXTUREACCESS_STREAMING, new_width, new_height)))
             return -1;
+        // 设置纹理的混合模式
+        //混合模式定义了源像素（即要绘制的纹理像素）与目标像素（即已经存在于渲染目标上的像素）如何组合。​
         if (SDL_SetTextureBlendMode(*texture, blendmode) < 0)
             return -1;
+        // 如果需要，初始化纹理
         if (init_texture) {
             if (SDL_LockTexture(*texture, NULL, &pixels, &pitch) < 0)
                 return -1;
@@ -52,9 +64,10 @@ void VideoCtl::calculate_display_rect(SDL_Rect* rect,
     int scr_xleft, int scr_ytop, int scr_width, int scr_height,
     int pic_width, int pic_height, AVRational pic_sar)
 {
+    //宽高比
     float aspect_ratio;
     int width, height, x, y;
-
+    // 计算显示宽高比
     if (pic_sar.num == 0)
         aspect_ratio = 0;
     else
@@ -62,6 +75,7 @@ void VideoCtl::calculate_display_rect(SDL_Rect* rect,
 
     if (aspect_ratio <= 0.0)
         aspect_ratio = 1.0;
+    //将aspect_ratio乘以视频的宽高比，即(float)pic_width / (float)pic_height，得到实际的显示宽高比。
     aspect_ratio *= (float)pic_width / (float)pic_height;
 
     /* XXX: we suppose the screen has a 1.0 pixel ratio */
@@ -71,6 +85,7 @@ void VideoCtl::calculate_display_rect(SDL_Rect* rect,
         width = scr_width;
         height = lrint(width / aspect_ratio) & ~1;
     }
+    //显示区域的左上角坐标，使其在屏幕上居中显示
     x = (scr_width - width) / 2;
     y = (scr_height - height) / 2;
     rect->x = scr_xleft + x;
@@ -1895,7 +1910,9 @@ the_end:
 
 void VideoCtl::refresh_loop_wait_event(VideoState* is, SDL_Event* event) {
     double remaining_time = 0.0;
+    //调用 SDL_PumpEvents() 函数从输入设备收集所有待处理的输入信息，并将其放入事件队列中。
     SDL_PumpEvents();
+    //使用 SDL_PeepEvents() 函数从事件队列中获取事件
     while (!SDL_PeepEvents(event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT) && m_bPlayLoop)
     {
         if (remaining_time > 0.0)
@@ -1966,7 +1983,6 @@ void VideoCtl::LoopThread(VideoState* cur_stream)
             case SDLK_t:
                 stream_cycle_channel(cur_stream, AVMEDIA_TYPE_SUBTITLE);
                 break;
-
             default:
                 break;
             }
@@ -1989,11 +2005,8 @@ void VideoCtl::LoopThread(VideoState* cur_stream)
             break;
         }
     }
-
-
     do_exit(m_CurStream);
     //m_CurStream = nullptr;
-
 }
 
 int lockmgr(void** mtx, enum AVLockOp op)
@@ -2164,7 +2177,7 @@ void VideoCtl::do_exit(VideoState*& is)
 
     if (window)
     {
-        //SDL_DestroyWindow(window);
+        SDL_DestroyWindow(window);
         window = nullptr;
     }
 
@@ -2289,6 +2302,7 @@ VideoCtl::~VideoCtl()
 bool VideoCtl::StartPlay(QString strFileName, WId widPlayWid)
 {
     m_bPlayLoop = false;
+    //先停止之前的播放线程
     if (m_tPlayLoopThread.joinable())
     {
         m_tPlayLoopThread.join();
@@ -2313,7 +2327,6 @@ bool VideoCtl::StartPlay(QString strFileName, WId widPlayWid)
 
     //事件循环
     m_tPlayLoopThread = std::thread(&VideoCtl::LoopThread, this, is);
-
 
     return true;
 }

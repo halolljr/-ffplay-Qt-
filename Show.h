@@ -112,6 +112,7 @@ signals:
     void SigFullScreen();//全屏播放
     void SigPlayOrPause();
     void SigStop();
+    //与Player::OnShowMenu连接
     void SigShowMenu();
 
     void SigSeekForward();
