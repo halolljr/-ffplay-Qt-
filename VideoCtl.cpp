@@ -80,14 +80,16 @@ void VideoCtl::calculate_display_rect(SDL_Rect* rect,
 
     /* XXX: we suppose the screen has a 1.0 pixel ratio */
     height = scr_height;
+    //lrint 用于四舍五入， & ~1 的作用是确保宽度为偶数（通常视频编解码要求宽度为偶数）。
     width = lrint(height * aspect_ratio) & ~1;
     if (width > scr_width) {
         width = scr_width;
         height = lrint(width / aspect_ratio) & ~1;
     }
-    //显示区域的左上角坐标，使其在屏幕上居中显示
+    //计算水平和垂直方向的偏移量：
     x = (scr_width - width) / 2;
     y = (scr_height - height) / 2;
+    //显示区域的左上角坐标，使其在屏幕上居中显示
     rect->x = scr_xleft + x;
     rect->y = scr_ytop + y;
     rect->w = FFMAX(width, 1);
@@ -98,10 +100,16 @@ int VideoCtl::upload_texture(SDL_Texture* tex, AVFrame* frame, struct SwsContext
     int ret = 0;
     switch (frame->format) {
     case AV_PIX_FMT_YUV420P:
+        //这里判断每个分量的行大小（linesize）是否为负值，因为负的行大小表示数据排列方式为倒序（比如图像垂直翻转），而 YUV 格式暂不支持这种情况。
         if (frame->linesize[0] < 0 || frame->linesize[1] < 0 || frame->linesize[2] < 0) {
             av_log(NULL, AV_LOG_ERROR, "Negative linesize is not supported for YUV.\n");
             return -1;
         }
+        //用 SDL_UpdateYUVTexture 将 AVFrame 中的 Y、U、V 分量数据上传到纹理中。
+        // 第二个参数是一个指向 SDL_Rect 的指针，用于指定更新纹理的区域。传入 NULL 意味着整个纹理都将被更新。
+		//frame->data[0] 与 frame->linesize[0]
+		//frame->data[0] 是一个指针，指向视频帧中 Y 分量（亮度）的数据。
+		//frame->linesize[0] 表示 Y 分量每一行的字节数（pitch），用于告知 SDL 如何在内存中逐行读取数据。
         ret = SDL_UpdateYUVTexture(tex, NULL, frame->data[0], frame->linesize[0],
             frame->data[1], frame->linesize[1],
             frame->data[2], frame->linesize[2]);
@@ -115,6 +123,7 @@ int VideoCtl::upload_texture(SDL_Texture* tex, AVFrame* frame, struct SwsContext
         }
         break;
     default:
+        //当视频帧的格式不是 YUV420P 或 BGRA 时，需要将其转换为 BGRA 格式供 SDL 使用。
         /* This should only happen if we are not using avfilter... */
         *img_convert_ctx = sws_getCachedContext(*img_convert_ctx,
             frame->width, frame->height, (AVPixelFormat)frame->format, frame->width, frame->height,
@@ -143,7 +152,6 @@ void VideoCtl::video_image_display(VideoState* is)
     Frame* vp;
     Frame* sp = NULL;
     SDL_Rect rect;
-
     vp = frame_queue_peek_last(&is->pictq);
     if (is->subtitle_st) {
         if (frame_queue_nb_remaining(&is->subpq) > 0) {
@@ -201,7 +209,6 @@ void VideoCtl::video_image_display(VideoState* is)
             return;
         vp->uploaded = 1;
         vp->flip_v = vp->frame->linesize[0] < 0;
-
         //通知宽高变化
         if (m_nFrameW != vp->frame->width || m_nFrameH != vp->frame->height)
         {
@@ -210,8 +217,16 @@ void VideoCtl::video_image_display(VideoState* is)
             emit SigFrameDimensionsChanged(m_nFrameW, m_nFrameH);
         }
     }
-
+    //使用 SDL 的扩展渲染函数 SDL_RenderCopyEx 将上传后的视频纹理渲染到目标矩形 rect 上。
+	//renderer：SDL 渲染器，用于实际绘制到窗口上。
+	//is->vid_texture：视频纹理，存储了当前视频帧的数据。
+	//NULL：表示整个纹理都被用于渲染（无源矩形裁剪）。
+	//&rect：目标显示矩形，计算好后确保视频居中且保持正确比例。
+	//0：旋转角度，这里不进行旋转。
+	//NULL：旋转中心，默认使用中心点。
+	//SDL_RendererFlip 标志：根据 vp->flip_v 判断是否需要垂直翻转。
     SDL_RenderCopyEx(renderer, is->vid_texture, NULL, &rect, 0, NULL, (SDL_RendererFlip)(vp->flip_v ? SDL_FLIP_VERTICAL : 0));
+    //渲染字幕层（预留）
     if (sp) {
         SDL_RenderCopy(renderer, is->sub_texture, NULL, &rect);
     }
@@ -2111,11 +2126,10 @@ void VideoCtl::video_display(VideoState* is)
         //恰好显示控件大小在变化，则不刷新显示
         if (g_show_rect_mutex.tryLock())
         {
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-            SDL_RenderClear(renderer);
-            video_image_display(is);
-            SDL_RenderPresent(renderer);
-
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // 设置渲染颜色为黑色
+            SDL_RenderClear(renderer);  // 清除渲染器内容
+            video_image_display(is);    // 将视频帧渲染到当前渲染目标上
+            SDL_RenderPresent(renderer);    //将渲染器的内容呈现到关联的窗口上，更新显示
             g_show_rect_mutex.unlock();
         }
     }
@@ -2128,20 +2142,21 @@ int VideoCtl::video_open(VideoState* is)
 
     w = screen_width;
     h = screen_height;
-
     if (!window) {
         int flags = SDL_WINDOW_SHOWN;
         flags |= SDL_WINDOW_RESIZABLE;
 
         window = SDL_CreateWindowFrom((void*)play_wid);
-        SDL_GetWindowSize(window, &w, &h);//初始宽高设置为显示控件宽高
+        SDL_GetWindowSize(window, &w, &h);//初始宽高设置为显示控件宽高，因此会覆盖原来的w和h
         SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
         if (window) {
             SDL_RendererInfo info;
             if (!renderer)
+                //尝试先使用硬件加速方式创建渲染器（指定 SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC）
                 renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
             if (!renderer) {
                 av_log(NULL, AV_LOG_WARNING, "Failed to initialize a hardware accelerated renderer: %s\n", SDL_GetError());
+                //上述硬件渲染如果失败则回退使用软件渲染。
                 renderer = SDL_CreateRenderer(window, -1, 0);
             }
             if (renderer) {
@@ -2151,6 +2166,7 @@ int VideoCtl::video_open(VideoState* is)
         }
     }
     else {
+        //改变显示窗口宽高
         SDL_SetWindowSize(window, w, h);
     }
 

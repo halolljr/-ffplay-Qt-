@@ -119,14 +119,14 @@ typedef struct Frame {
 	int height;	// 图像⾼读
 	int format;	// 对于图像为(enum AVPixelFormat)，对于声⾳则为(enum AVSampleFormat)
 	AVRational sar;	// 图像的宽⾼⽐，如果未知或未指定则为0/1
-	int uploaded;	// ⽤来记录该帧是否已经显示过？
+	int uploaded;	// 当前帧是否上传到GPU
 	int flip_v;	// =1则旋转180， = 0则正常播放
 } Frame;
 
 //帧队列
 typedef struct FrameQueue {
 	Frame queue[FRAME_QUEUE_SIZE];	// FRAME_QUEUE_SIZE 最⼤size, 数字太⼤时会占⽤⼤量的内存，需要注意该值的设置
-	int rindex;	// rindex指示已经被“消费”（显示）或正等待被消费的起始位置。PS：每当播放完一帧后，调用frame_queue_next会使rindex 会递增，指向下一帧的位置。
+	int rindex;	// rindex指示已经显示的最近一帧（一般是未调用frame_queue_next之前以适应暂停时候显示画面或者窗口变化时作为参考帧）或正等待被显示的帧起始位置。frame_queue_next()会改变其位置;
 	int windex;	// 写索引
 	int size;	// size 并非表示内存大小，而是当前队列中帧的数量
 	int max_size;	// 可存储最⼤帧数；认情况下，max_size 的值可能比实际的数组大小（如 FRAME_QUEUE_SIZE）小，以确保在高分辨率视频情况下不会占用过多内存
@@ -233,7 +233,7 @@ typedef struct VideoState {
 	int subtitle_stream;	// 字幕流索引
 	AVStream* subtitle_st;	// 字幕流
 	PacketQueue subtitleq;	// 字幕packet队列
-	double frame_timer;	// 记录最后⼀帧播放的时刻
+	double frame_timer;	// 记录最后一帧播放到目前的时刻
 	double frame_last_returned_time;
 	double frame_last_filter_delay;
 	int video_stream;// 视频流索引
@@ -798,10 +798,13 @@ static void frame_queue_push(FrameQueue* f)
 /// <param name="f"></param>
 static void frame_queue_next(FrameQueue* f)
 {
+	//start
+	//第一帧会进入，此后不会进入
 	if (f->keep_last && !f->rindex_shown) {
 		f->rindex_shown = 1;
 		return;
 	}
+	//end
 	frame_queue_unref_item(&f->queue[f->rindex]);
 	if (++f->rindex == f->max_size)
 		f->rindex = 0;
@@ -818,6 +821,7 @@ static void frame_queue_next(FrameQueue* f)
 /// <returns></returns>
 static int frame_queue_nb_remaining(FrameQueue* f)
 {
+	//减去队列中已经显示的但还没有出队列的rindex一帧
 	return f->size - f->rindex_shown;
 }
 

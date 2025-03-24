@@ -154,24 +154,29 @@ private:
     //更新音量
     void UpdateVolume(int sign, double step);
     void video_display(VideoState* is);
+    /// <summary>
+    /// 创建SDL_Window和SDL_Render(会先尝试硬件渲染)，并将is->width设为显示空间的宽，is->height同理
+    /// </summary>
+    /// <param name="is"></param>
+    /// <returns></returns>
     int video_open(VideoState* is);
     void do_exit(VideoState*& is);
     /// <summary>
-    /// 根据新的格式、宽度和高度，重新分配或更新传入的SDL_Texture对象。
+    /// 如果SDL_Texture为空则创建一个；或者根据新的格式、宽度和高度，重新分配或更新传入的SDL_Texture对象。同时设置合适的混合模式，并在需要时初始化纹理（清零）。
     /// </summary>
     /// <param name="texture"></param>
-    /// <param name="new_format"></param>
-    /// <param name="new_width"></param>
-    /// <param name="new_height"></param>
-    /// <param name="blendmode"></param>
-    /// <param name="init_texture"></param>
+    /// <param name="new_format">将AVFrame转化为SDL匹配的像素格式</param>
+    /// <param name="new_width">帧的宽度</param>
+    /// <param name="new_height">帧的高度</param>
+    /// <param name="blendmode">为SDL_BLENDMODE_NONE</param>
+    /// <param name="init_texture">为0</param>
     /// <returns></returns>
     int realloc_texture(SDL_Texture** texture, Uint32 new_format, int new_width, int new_height, SDL_BlendMode blendmode, int init_texture);
     /// <summary>
-    /// 计算视频在屏幕上的显示区域，以确保视频按照正确的宽高比进行显示。
-    /// ​该函数考虑了视频的显示宽高比（SAR，Sample Aspect Ratio），并根据屏幕的尺寸和位置，计算出适合的视频显示区域
+    /// 通过上一待显示（第一帧）的帧或者上一已经显示的帧来计算视频在屏幕上的显示区域，以确保视频按照正确的宽高比进行显示。
+    /// AVFrame中的 SAR（Sample Aspect Ratio即采样宽高比）用于描述单个像素的宽高比例，而视频帧的分辨率（pic_width 和 pic_height）只是像素的个数
     /// </summary>
-    /// <param name="rect">SDL显示的矩形区域</param>
+    /// <param name="rect">SDL显示的矩形区域[x（左上角 x 坐标）、y（左上角 y 坐标）、w（宽度）和 h（高度）]</param>
     /// <param name="scr_xleft">：is->xleft</param>
     /// <param name="scr_ytop">：is->>ytop</param>
     /// <param name="scr_width">：is->width</param>
@@ -180,6 +185,13 @@ private:
     /// <param name="pic_height">帧的高度</param>
     /// <param name="pic_sar">帧的宽高比</param>
     void calculate_display_rect(SDL_Rect* rect, int scr_xleft, int scr_ytop, int scr_width, int scr_height, int pic_width, int pic_height, AVRational pic_sar);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="tex"></param>
+    /// <param name="frame"></param>
+    /// <param name="img_convert_ctx"></param>
+    /// <returns></returns>
     int upload_texture(SDL_Texture* tex, AVFrame* frame, struct SwsContext** img_convert_ctx);
     void video_image_display(VideoState* is);
     void stream_component_close(VideoState* is, int stream_index);
