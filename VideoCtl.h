@@ -196,6 +196,13 @@ private:
     void toggle_pause(VideoState* is);
     void step_to_next_frame(VideoState* is);
     double compute_target_delay(double delay, VideoState* is);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="is"></param>
+    /// <param name="vp">rindex指示的帧</param>
+    /// <param name="nextvp">rindex+rindex_shown指示的帧</param>
+    /// <returns></returns>
     double vp_duration(VideoState* is, Frame* vp, Frame* nextvp);
     void update_video_pts(VideoState* is, double pts, int64_t pos, int serial);
 public:

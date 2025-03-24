@@ -126,12 +126,12 @@ typedef struct Frame {
 //帧队列
 typedef struct FrameQueue {
 	Frame queue[FRAME_QUEUE_SIZE];	// FRAME_QUEUE_SIZE 最⼤size, 数字太⼤时会占⽤⼤量的内存，需要注意该值的设置
-	int rindex;	// 读索引。待播放时读取此帧进⾏播放，播放后此帧成为上⼀帧,索引往下
+	int rindex;	// rindex指示已经被“消费”（显示）或正等待被消费的起始位置。PS：每当播放完一帧后，调用frame_queue_next会使rindex 会递增，指向下一帧的位置。
 	int windex;	// 写索引
-	int size;	// 当前总帧数
-	int max_size;	// 可存储最⼤帧数
-	int keep_last;	// = 1说明要在队列⾥⾯保持最后⼀帧的数据不释放，只在销毁队列的时候才将其真正释放
-	int rindex_shown;	//记录从 rindex 开始已经“显示”但还未被正式移除的帧数量。如果设置了 keep_last，第一个要显示的帧就不会被立即移除，而是通过将 rindex_shown 设为 1 来保留。
+	int size;	// size 并非表示内存大小，而是当前队列中帧的数量
+	int max_size;	// 可存储最⼤帧数；认情况下，max_size 的值可能比实际的数组大小（如 FRAME_QUEUE_SIZE）小，以确保在高分辨率视频情况下不会占用过多内存
+	int keep_last;	// 音频流与视频流都已经写死为1，字母流写死为0;keep_last 决定了在播放完一帧后，是否将其保留在队列中而不立即销毁。启用 keep_last 的主要目的是在需要重新渲染上一帧时（例如窗口大小变化）能够直接获取，而无需重新解码。
+	int rindex_shown;	//默认情况下，rindex_shown 为 0，表示直接读取 rindex 所指向的帧。当启用了 keep_last 功能且 rindex_shown 被设置为 1 时，读取帧时会使用 rindex + rindex_shown 作为索引，以确保能够正确读取下一帧。​
 	SDL_mutex* mutex;	// 互斥量
 	SDL_cond* cond;	// 条件变量
 	PacketQueue* pktq;	// 数据包缓冲队列
@@ -715,22 +715,38 @@ static void frame_queue_signal(FrameQueue* f)
 	SDL_CondSignal(f->cond);
 	SDL_UnlockMutex(f->mutex);
 }
-
+/// <summary>
+/// 该函数返回当前可显示的帧，即读索引加上显示偏移量所指向的帧。​这对于在保留最后一帧的情况下，确保获取到正确的帧进行显示非常重要。
+/// </summary>
+/// <param name="f"></param>
+/// <returns></returns>
 static Frame* frame_queue_peek(FrameQueue* f)
 {
 	return &f->queue[(f->rindex + f->rindex_shown) % f->max_size];
 }
-
+/// <summary>
+/// 该函数返回下一帧，即在当前显示帧的基础上再前进一个位置。​这在需要预取或预览下一帧内容时非常有用。
+/// </summary>
+/// <param name="f"></param>
+/// <returns></returns>
 static Frame* frame_queue_peek_next(FrameQueue* f)
 {
 	return &f->queue[(f->rindex + f->rindex_shown + 1) % f->max_size];
 }
-
+/// <summary>
+/// 该函数返回最后一个已显示的帧，即当前读索引所指向的帧。​这对于需要重新渲染或重复显示最后一帧的场景非常有用。
+/// </summary>
+/// <param name="f"></param>
+/// <returns></returns>
 static Frame* frame_queue_peek_last(FrameQueue* f)
 {
 	return &f->queue[f->rindex];
 }
-
+/// <summary>
+/// 该函数用于获取一个可写入的新帧位置。​如果帧队列已满，函数会等待直到有空间可写或接收到中止请求。​这确保了生产者线程在队列满时不会覆盖未处理的帧。​
+/// </summary>
+/// <param name="f"></param>
+/// <returns></returns>
 static Frame* frame_queue_peek_writable(FrameQueue* f)
 {
 	/* wait until we have space to put a new frame */
@@ -743,7 +759,11 @@ static Frame* frame_queue_peek_writable(FrameQueue* f)
 		return NULL;
 	return &f->queue[f->windex];
 }
-
+/// <summary>
+/// 该函数用于获取一个可读取的帧。​如果没有可读帧，函数会等待直到有新帧可读或接收到中止请求。​这确保了消费者线程在没有可用帧时不会读取无效数据。
+/// </summary>
+/// <param name="f"></param>
+/// <returns></returns>
 static Frame* frame_queue_peek_readable(FrameQueue* f)
 {
 	/* wait until we have a readable a new frame */
@@ -759,7 +779,10 @@ static Frame* frame_queue_peek_readable(FrameQueue* f)
 
 	return &f->queue[(f->rindex + f->rindex_shown) % f->max_size];
 }
-
+/// <summary>
+/// 该函数在帧被写入后调用，移动写索引并更新队列大小。​如果写索引达到最大值，则循环回到起始位置。​同时，函数会发出信号通知可能等待的读取操作。
+/// </summary>
+/// <param name="f"></param>
 static void frame_queue_push(FrameQueue* f)
 {
 	if (++f->windex == f->max_size)
@@ -769,7 +792,10 @@ static void frame_queue_push(FrameQueue* f)
 	SDL_CondSignal(f->cond);
 	SDL_UnlockMutex(f->mutex);
 }
-
+/// <summary>
+/// 该函数在帧被消费后调用，移动读索引并更新队列大小。​如果设置了 keep_last，则保留最后一帧以供重复显示。​同时，函数会发出信号通知可能等待的写入操作。
+/// </summary>
+/// <param name="f"></param>
 static void frame_queue_next(FrameQueue* f)
 {
 	if (f->keep_last && !f->rindex_shown) {
@@ -785,13 +811,21 @@ static void frame_queue_next(FrameQueue* f)
 	SDL_UnlockMutex(f->mutex);
 }
 
-/* return the number of undisplayed frames in the queue */
+/// <summary>
+/// 该函数返回队列中尚未显示的帧数。​这对于了解当前缓冲区的填充程度和播放进度非常有用。
+/// </summary>
+/// <param name="f"></param>
+/// <returns></returns>
 static int frame_queue_nb_remaining(FrameQueue* f)
 {
 	return f->size - f->rindex_shown;
 }
 
-/* return last shown position */
+/// <summary>
+/// 该函数返回最后显示帧的位置（如字节位置或时间戳），用于同步和调试目的。​如果没有可用的位置信息，函数返回 -1。
+/// </summary>
+/// <param name="f"></param>
+/// <returns></returns>
 static int64_t frame_queue_last_pos(FrameQueue* f)
 {
 	Frame* fp = &f->queue[f->rindex];
