@@ -152,7 +152,6 @@ void Show::keyReleaseEvent(QKeyEvent* event)
 	case Qt::Key_Space://减少10音量
 		emit SigPlayOrPause();
 		break;
-
 	default:
 		QWidget::keyPressEvent(event);
 		break;

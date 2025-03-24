@@ -281,7 +281,10 @@ void VideoCtl::stream_close(VideoState* is)
     /* XXX: use a special url_shutdown call to abort parse cleanly */
     is->abort_request = 1;
     is->read_tid.join();
-
+	if (is->filename) {
+		av_free(is->filename);
+		is->filename = nullptr;
+	}
     /* close each stream */
     if (is->audio_stream >= 0)
         stream_component_close(is, is->audio_stream);
@@ -1912,7 +1915,7 @@ void VideoCtl::refresh_loop_wait_event(VideoState* is, SDL_Event* event) {
     double remaining_time = 0.0;
     //调用 SDL_PumpEvents() 函数从输入设备收集所有待处理的输入信息，并将其放入事件队列中。
     SDL_PumpEvents();
-    //使用 SDL_PeepEvents() 函数从事件队列中获取事件
+    //使用 SDL_PeepEvents() 函数从事件队列中获取事件,没有事件返回0
     while (!SDL_PeepEvents(event, 1, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT) && m_bPlayLoop)
     {
         if (remaining_time > 0.0)
@@ -2291,6 +2294,12 @@ VideoCtl* VideoCtl::GetInstance()
 
 VideoCtl::~VideoCtl()
 {
+    if (m_tPlayLoopThread.joinable()) {
+        m_tPlayLoopThread.join();
+    }
+
+    do_exit(m_CurStream);
+
     av_lockmgr_register(NULL);
 
     avformat_network_deinit();

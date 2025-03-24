@@ -152,7 +152,7 @@ typedef struct Decoder {
 	int pkt_serial;
 	int finished;
 	int packet_pending;
-	SDL_cond* empty_queue_cond;
+	SDL_cond* empty_queue_cond;	//外部总管VideoState传进来的
 	int64_t start_pts;
 	AVRational start_pts_tb;
 	int64_t next_pts;
