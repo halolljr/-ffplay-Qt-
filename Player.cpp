@@ -291,7 +291,8 @@ void Player::OnFullScreenPlay()
 		//将显示窗口ShowWid的屏幕设置为当前屏幕。
 		ui->ShowWid->windowHandle()->setScreen(pStCurScreen);
 		// 全屏显示视频窗口
-		//导致窗口状态的变化，从而可能触发与窗口状态相关的信号。
+		//导致窗口状态的变化
+		//底层操作系统会通知窗口管理器窗口尺寸的变化，而 SDL 作为底层窗口的抽象层，会捕获这些变化，并生成相应的窗口事件（如 SDL_WINDOWEVENT_RESIZED 和 SDL_WINDOWEVENT_EXPOSED）。
 		ui->ShowWid->showFullScreen();
 		//获取屏幕的几何尺寸和控制栏的高度，计算控制栏在显示和隐藏时的位置。
 		QRect stScreenRect = pStCurScreen->geometry();

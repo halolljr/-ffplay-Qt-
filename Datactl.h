@@ -131,7 +131,7 @@ typedef struct FrameQueue {
 	int size;	// size 并非表示内存大小，而是当前队列中帧的数量
 	int max_size;	// 可存储最⼤帧数；认情况下，max_size 的值可能比实际的数组大小（如 FRAME_QUEUE_SIZE）小，以确保在高分辨率视频情况下不会占用过多内存
 	int keep_last;	// 音频流与视频流都已经写死为1，字母流写死为0;keep_last 决定了在播放完一帧后，是否将其保留在队列中而不立即销毁。启用 keep_last 的主要目的是在需要重新渲染上一帧时（例如窗口大小变化）能够直接获取，而无需重新解码。
-	int rindex_shown;	//默认情况下，rindex_shown 为 0，表示直接读取 rindex 所指向的帧。当启用了 keep_last 功能且 rindex_shown 被设置为 1 时，读取帧时会使用 rindex + rindex_shown 作为索引，以确保能够正确读取下一帧。​
+	int rindex_shown;	//【本程序写死Keep_last为1,；读取第一帧的时候rindex_shown就被设置为1】默认情况下，rindex_shown 为 0，表示直接读取 rindex 所指向的帧。当启用了 keep_last 功能且 rindex_shown 被设置为 1 时，读取帧时会使用 rindex + rindex_shown 作为索引，以确保能够正确读取下一帧。​
 	SDL_mutex* mutex;	// 互斥量
 	SDL_cond* cond;	// 条件变量
 	PacketQueue* pktq;	// 数据包缓冲队列
@@ -233,7 +233,7 @@ typedef struct VideoState {
 	int subtitle_stream;	// 字幕流索引
 	AVStream* subtitle_st;	// 字幕流
 	PacketQueue subtitleq;	// 字幕packet队列
-	double frame_timer;	// 记录最后一帧播放到目前的时刻
+	double frame_timer;	// 前正在显示的帧在系统时间中的播放时刻
 	double frame_last_returned_time;
 	double frame_last_filter_delay;
 	int video_stream;// 视频流索引
@@ -245,7 +245,7 @@ typedef struct VideoState {
 	int eof;	// 是否读取结束
 	char* filename;	// ⽂件名
 	int width, height, xleft, ytop;	// 宽、⾼，x起始坐标，y起始坐标
-	int step;	// =1 步进播放模式, =0 其他模式（step 模式下用户可能希望逐帧观察，不允许自动丢帧）。
+	int step;	// 【主要用于暂停时候seek请求】=1 单步播放模式, =0 其他模式（在单步模式下，每次显示完一帧视频后，自动暂停播放，等待用户触发下一步操作（例如，按键事件）以继续播放下一帧。这样可以实现逐帧查看视频内容的功能。）
 	// 保留最近的相应audio、video、subtitle流的steam index
 	int last_video_stream, last_audio_stream, last_subtitle_stream;
 	SDL_cond* continue_read_thread;	// 当读取数据队列满了后进⼊休眠时，可以通过该condition唤醒读线程

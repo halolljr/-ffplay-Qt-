@@ -18,6 +18,7 @@
 
 #pragma execution_character_set("utf-8")
 
+//extern关键字
 extern QMutex g_show_rect_mutex;
 
 static int framedrop = -1;
@@ -493,7 +494,7 @@ void VideoCtl::stream_toggle_pause(VideoState* is)
     }
     // 无论暂停状态如何，都更新外部时钟 extclk，使其与当前时间同步
     set_clock(&is->extclk, get_clock(&is->extclk), is->extclk.serial);
-    // 最后切换全局的暂停状态。将 paused 标志取反，并同步设置音频（audclk）、视频（vidclk）和外部（extclk）时钟的暂停标志。
+    // 将 paused 标志取反，并同步设置音频（audclk）、视频（vidclk）和外部（extclk）时钟的暂停标志。
     is->paused = is->audclk.paused = is->vidclk.paused = is->extclk.paused = !is->paused;
 }
 
@@ -749,6 +750,8 @@ void VideoCtl::video_refresh(void* opaque, double* remaining_time)
             frame_queue_next(&is->pictq);
             is->force_refresh = 1;
             //            qDebug() << "debug " << __LINE__;
+            // step为1，单步模式，当暂停时候seek，step就被设置为1，用以暂停显帧
+            //在单步模式下，每次显示完一帧视频后，自动暂停播放，等待用户触发下一步操作（例如，按键事件）以继续播放下一帧。这样可以实现逐帧查看视频内容的功能。
             if (is->step && !is->paused)
                 stream_toggle_pause(is);
         }
@@ -2001,7 +2004,6 @@ void VideoCtl::seek_chapter(VideoState* is, int incr)
         /*AV_TIME_BASE_Q*/{ 1, AV_TIME_BASE }), 0);
 }
 
-//播放控制循环
 void VideoCtl::LoopThread(VideoState* cur_stream)
 {
     SDL_Event event;

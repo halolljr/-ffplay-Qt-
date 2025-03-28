@@ -6,6 +6,7 @@
 
 #pragma execution_character_set("utf-8")
 
+//在VideoCtrl会添加extern关键字
 QMutex g_show_rect_mutex;
 
 Show::Show(QWidget *parent)
@@ -149,7 +150,7 @@ void Show::keyReleaseEvent(QKeyEvent* event)
 	case Qt::Key_Down://减少10音量
 		emit SigSubVolume();
 		break;
-	case Qt::Key_Space://减少10音量
+	case Qt::Key_Space://播放或暂停
 		emit SigPlayOrPause();
 		break;
 	default:

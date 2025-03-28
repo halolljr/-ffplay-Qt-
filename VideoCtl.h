@@ -37,6 +37,12 @@ public:
     /// <param name="is"></param>
     /// <returns>重采样后的数据大小（或直接返回原始数据大小，如果没有重采样）</returns>
     int audio_decode_frame(VideoState* is);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="is"></param>
+    /// <param name="samples"></param>
+    /// <param name="samples_size"></param>
     void update_sample_display(VideoState* is, short* samples, int samples_size);
 	/// <summary>
     /// 设置Clock的各项属性
@@ -46,20 +52,52 @@ public:
     /// <param name="serial"></param>
     /// <param name="time">当前时间</param>
     void set_clock_at(Clock* c, double pts, int serial, double time);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="c"></param>
+    /// <param name="slave"></param>
     void sync_clock_to_slave(Clock* c, Clock* slave);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="id"></param>
+    /// <param name="default_value"></param>
+    /// <returns></returns>
     float     ffp_get_property_float(int id, float default_value);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="id"></param>
+    /// <param name="value"></param>
     void      ffp_set_property_float(int id, float value);
     //    int64_t   ffp_get_property_int64(int id, int64_t default_value);
     //    void      ffp_set_property_int64(int id, int64_t value);
 signals:
+    /// <summary>
+    /// 
+    /// </summary>
     void SigSpeed(float speed);
-    void SigPlayMsg(QString strMsg);//< 错误信息
-    void SigFrameDimensionsChanged(int nFrameWidth, int nFrameHeight); //<视频宽高发生变化
+    /// <summary>
+    /// 错误信息
+    /// </summary>
+    /// <param name="strMsg"></param>
+    void SigPlayMsg(QString strMsg);
+    /// <summary>
+    /// 视频宽高发生变化
+    /// </summary>
+    /// <param name="nFrameWidth"></param>
+    /// <param name="nFrameHeight"></param>
+    void SigFrameDimensionsChanged(int nFrameWidth, int nFrameHeight); 
     /// <summary>
     /// 信号，和CtrlBar::OnVideoTotalSeconds连接
     /// </summary>
     /// <param name="nSeconds">秒为单位</param>
     void SigVideoTotalSeconds(int nSeconds);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="nSeconds"></param>
     void SigVideoPlaySeconds(int nSeconds);
     /// <summary>
     /// 信号；与CtrlBar::OnVideopVolume连接
@@ -71,16 +109,30 @@ signals:
     /// </summary>
     /// <param name="bPaused">0-非暂停</param>
     void SigPauseStat(bool bPaused);
+    /// <summary>
+    /// 
+    /// </summary>
     void SigStop();
-    void SigStopFinished();//停止播放完成
+    /// <summary>
+    /// 停止播放完成
+    /// </summary>
+    void SigStopFinished();
+    /// <summary>
+    /// 开始播放，播放视频的入口
+    /// </summary>
+    /// <param name="strFileName"></param>
     void SigStartPlay(QString strFileName);
 public:
     void OnSpeed();
     /// <summary>
-    /// 与SigPlaySeek连接
+    /// 与SigPlaySeek连接，内部调用stream_seek
     /// </summary>
     /// <param name="dPercent"></param>
     void OnPlaySeek(double dPercent);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="dPercent"></param>
     void OnPlayVolume(double dPercent);
     /// <summary>
     /// 与Player::SigSeekForward连接，前进X（5）秒
@@ -98,7 +150,13 @@ public:
     /// 与Player::SigSubVolume连接，降低Y（10）音量
     /// </summary>
     void OnSubVolume();
+    /// <summary>
+    /// 暂停的入口
+    /// </summary>
     void OnPause();
+    /// <summary>
+    /// 终止的入口
+    /// </summary>
     void OnStop();
 private:
     explicit VideoCtl(QObject* parent = nullptr);
@@ -116,9 +174,30 @@ private:
      * @note
      */
     bool ConnectSignalSlots();
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="is"></param>
+    /// <param name="frame"></param>
+    /// <returns></returns>
     int get_video_frame(VideoState* is, AVFrame* frame);
+    /// <summary>
+    /// 音频解码线程
+    /// </summary>
+    /// <param name="arg"></param>
+    /// <returns></returns>
     int audio_thread(void* arg);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="arg"></param>
+    /// <returns></returns>
     int video_thread(void* arg);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="arg"></param>
+    /// <returns></returns>
     int subtitle_thread(void* arg);
 	/// <summary>
     /// 计算音频时钟与主时钟（通常是视频时钟或外部时钟）之间的差异，
@@ -146,13 +225,29 @@ private:
     /// <param name="stream_index">流索引</param>
     /// <returns></returns>
     int stream_component_open(VideoState* is, int stream_index);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="st"></param>
+    /// <param name="stream_id"></param>
+    /// <param name="queue"></param>
+    /// <returns></returns>
     int stream_has_enough_packets(AVStream* st, int stream_id, PacketQueue* queue);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="s"></param>
+    /// <returns></returns>
     int is_realtime(AVFormatContext* s);
     /// <summary>
-    /// 打开多媒体文件源；打开流；读取相应的AVPacket到相应的包队列中（读码）
+    /// VideoCtrl两大主线程之一;打开多媒体文件源；打开流；读取相应的AVPacket到相应的包队列中（读码）
     /// </summary>
     /// <param name="CurStream"></param>
     void ReadThread(VideoState* CurStream);
+    /// <summary>
+    /// VideoCtrl两大主线程之一;SDL事件循环线程，其中调用video_refresh...
+    /// </summary>
+    /// <param name="CurStream"></param>
     void LoopThread(VideoState* CurStream);
     /// <summary>
     /// 总起函数，初始化AVPacket队列、AVFrame队列、初始化时钟等等，并开辟Readthread线程
@@ -160,6 +255,11 @@ private:
     /// <param name="filename">：媒体源</param>
     /// <returns>VideoState*</returns>
     VideoState* stream_open(const char* filename);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="is"></param>
+    /// <param name="codec_type"></param>
     void stream_cycle_channel(VideoState* is, int codec_type);
     /// <summary>
     /// 在一个循环中持续检查事件队列，并根据需要刷新视频帧
@@ -167,18 +267,50 @@ private:
     /// <param name="is"></param>
     /// <param name="event"></param>
     void refresh_loop_wait_event(VideoState* is, SDL_Event* event);
+    /// <summary>
+    /// 用于在多章节的媒体文件中执行章节跳转。当用户希望跳转到前一个或后一个章节时，可以调用此函数，通过调整 incr 参数来指定跳转方向。
+    /// </summary>
+    /// <param name="is"></param>
+    /// <param name="incr"></param>
     void seek_chapter(VideoState* is, int incr);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="opaque"></param>
+    /// <param name="remaining_time"></param>
     void video_refresh(void* opaque, double* remaining_time);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="is"></param>
+    /// <param name="src_frame"></param>
+    /// <param name="pts"></param>
+    /// <param name="duration"></param>
+    /// <param name="pos"></param>
+    /// <param name="serial"></param>
+    /// <returns></returns>
     int queue_picture(VideoState* is, AVFrame* src_frame, double pts, double duration, int64_t pos, int serial);
-    //更新音量
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="sign"></param>
+    /// <param name="step"></param>
     void UpdateVolume(int sign, double step);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="is"></param>
     void video_display(VideoState* is);
     /// <summary>
-    /// 创建SDL_Window和SDL_Render(会先尝试硬件渲染)，并将is->width设为显示空间的宽，is->height同理
+    /// 创建SDL_Window和SDL_Render(会先尝试硬件渲染)，并将is->width设为显示空间的宽，is->height同理(窗口改变的时候也会进入该函数)
     /// </summary>
     /// <param name="is"></param>
     /// <returns></returns>
     int video_open(VideoState* is);
+    /// <summary>
+    /// 回收函数
+    /// </summary>
+    /// <param name="is"></param>
     void do_exit(VideoState*& is);
     /// <summary>
     /// 如果SDL_Texture为空则创建一个；或者根据新的格式、宽度和高度，重新分配或更新传入的SDL_Texture对象。同时设置合适的混合模式，并在需要时初始化纹理（清零）。
@@ -212,8 +344,21 @@ private:
     /// <param name="img_convert_ctx"></param>
     /// <returns></returns>
     int upload_texture(SDL_Texture* tex, AVFrame* frame, struct SwsContext** img_convert_ctx);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="is"></param>
     void video_image_display(VideoState* is);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="is"></param>
+    /// <param name="stream_index"></param>
     void stream_component_close(VideoState* is, int stream_index);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="is"></param>
     void stream_close(VideoState* is);
     /// <summary>
     /// 返回当前时钟的时间值，即当前视频（或音频）播放的时间戳
@@ -228,6 +373,11 @@ private:
     /// <param name="pts"></param>
     /// <param name="serial"></param>
     void set_clock(Clock* c, double pts, int serial);
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="c"></param>
+    /// <param name="speed"></param>
     void set_clock_speed(Clock* c, double speed);
 	/// <summary>
     /// 初始化时钟，设置速度为1.0，设置Clock的序列号，内部调用set_clock()
@@ -238,12 +388,22 @@ private:
     int get_master_sync_type(VideoState* is);
     double get_master_clock(VideoState* is);
     void check_external_clock_speed(VideoState* is);
+    /// <summary>
+    /// 跳转函数,由多个函数调用
+    /// </summary>
+    /// <param name="is"></param>
+    /// <param name="pos"></param>
+    /// <param name="rel"></param>
     void stream_seek(VideoState* is, int64_t pos, int64_t rel);
 	/// <summary>
-	/// 临时取消暂停（或者说“解冻”播放器）
+	/// （当点击暂停的时候，paused还是为0，在函数结尾才会变为1）
 	/// </summary>
 	/// <param name="is"></param>
     void stream_toggle_pause(VideoState* is);
+    /// <summary>
+    /// 点击暂停的时候
+    /// </summary>
+    /// <param name="is"></param>
     void toggle_pause(VideoState* is);
 	/// <summary>
     /// 当播放暂停时，通常不会自动获取并显示新帧。但在执行 seek 后，用户希望看到定位到新位置的那一帧。
@@ -298,7 +458,7 @@ private:
     SDL_Renderer* renderer;
     WId play_wid;//播放窗口
 
-    /* options specified by the user */
+    //当窗口发生变化的时候；
     int screen_width;
     int screen_height;
     int startup_volume;
@@ -306,6 +466,7 @@ private:
     //播放刷新循环线程
     std::thread m_tPlayLoopThread;
 
+    //一般用于帧的宽高变化；当播放源发生变化的时候，帧的宽高也会改变
     int m_nFrameW;
     int m_nFrameH;
 

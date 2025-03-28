@@ -102,7 +102,7 @@ private:
     bool ConnectSignalSlots();
 
     /// <summary>
-    /// 一旦帧的宽高变了或者显示窗口变化了
+    /// 一旦帧的宽高变了或者显示窗口变化了，主要是让label标签居中
     /// </summary>
     void ChangeShow();
 signals:
