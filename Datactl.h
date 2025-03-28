@@ -98,7 +98,7 @@ typedef struct AudioParams {
 //时钟
 typedef struct Clock {
 	double pts;           // 时钟基础, 当前帧(待播放)显示时间戳，播放后，当前帧变成上⼀帧
-	double pts_drift;     // 当前pts与当前系统时钟的差值, audio、video对于该值是独⽴的	
+	double pts_drift;     // pts与当前系统时钟的差值, audio、video对于该值是独⽴的，用于获取当前的显示的时间戳
 	double last_updated;	// 当前时钟(如视频时钟)最后⼀次更新时间，也可称当前时钟时间
 	double speed;	// 时钟速度控制，⽤于控制播放速度
 	int serial;           // 播放序列，所谓播放序列就是⼀段连续的播放动作，⼀个seek操作会启动⼀段新的播放序列
@@ -188,7 +188,7 @@ typedef struct VideoState {
 	Decoder subdec;	// 字幕解码器
 	int audio_stream;	// ⾳频流索引
 	int av_sync_type;	// ⾳视频同步类型, 默认audio master
-	double audio_clock;	// 当前⾳频帧的PTS+当前帧Duration
+	double audio_clock;	// 当前⾳频帧的PTS+当前帧Duration，即该帧（audio_buf）结束位置的时间戳（一段值）
 	int audio_clock_serial;	// 播放序列，seek可改变此值
 	// 以下4个参数 ⾮audio master同步⽅式使⽤
 	double audio_diff_cum; /* used for AV difference average computation */
@@ -198,16 +198,16 @@ typedef struct VideoState {
 	// end
 	AVStream* audio_st;	// ⾳频流
 	PacketQueue audioq;	// ⾳频packet队列
-	int audio_hw_buf_size;	// SDL⾳频缓冲区的⼤⼩(字节为单位
+	int audio_hw_buf_size;	//  SDL在内部为音频输出分配的缓冲区容量。
 	// 指向待播放的⼀帧⾳频数据，指向的数据区将被拷⼊SDL⾳频缓冲区。
 	// 若经过重采样则指向audio_buf1，否则指向frame中的⾳频
-	uint8_t* audio_buf;	// 指向需要重采样的数据
+	uint8_t* audio_buf;	// 指向需要重采样的数据（指向音频数据缓冲区的指针）
 	uint8_t* audio_buf1;	// 指向重采样后的数据
 	// 待播放的⼀帧⾳频数据(audio_buf指向)的⼤⼩（字节）
 	unsigned int audio_buf_size; 
 	// 申请到的⾳频缓冲区audio_buf1的实际尺⼨
 	unsigned int audio_buf1_size;
-	// 更新拷⻉位置 当前⾳频帧中已拷⼊SDL⾳频缓冲区的位置索引(指向第⼀个待拷⻉字节)
+	// 指示当前已处理或播放的音频数据在 audio_buf 中的偏移量（以字节为单位）。
 	int audio_buf_index; 
 	// 当前⾳频帧中尚未拷⼊SDL⾳频缓冲区的数据量:
 	// audio_buf_size = audio_buf_index + audio_write_buf_size
@@ -245,7 +245,7 @@ typedef struct VideoState {
 	int eof;	// 是否读取结束
 	char* filename;	// ⽂件名
 	int width, height, xleft, ytop;	// 宽、⾼，x起始坐标，y起始坐标
-	int step;	// =1 步进播放模式, =0 其他模式
+	int step;	// =1 步进播放模式, =0 其他模式（step 模式下用户可能希望逐帧观察，不允许自动丢帧）。
 	// 保留最近的相应audio、video、subtitle流的steam index
 	int last_video_stream, last_audio_stream, last_subtitle_stream;
 	SDL_cond* continue_read_thread;	// 当读取数据队列满了后进⼊休眠时，可以通过该condition唤醒读线程
@@ -725,7 +725,7 @@ static Frame* frame_queue_peek(FrameQueue* f)
 	return &f->queue[(f->rindex + f->rindex_shown) % f->max_size];
 }
 /// <summary>
-/// 该函数返回下一帧，即在当前显示帧的基础上再前进一个位置。​这在需要预取或预览下一帧内容时非常有用。
+/// 该函数返回在当前显示帧的基础上再前进一个位置。​这在需要预取或预览下一帧内容时非常有用。
 /// </summary>
 /// <param name="f"></param>
 /// <returns></returns>

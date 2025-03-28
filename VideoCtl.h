@@ -31,11 +31,22 @@ public:
    * @note
    */
     bool StartPlay(QString strFileName, WId widPlayWid);
+	/// <summary>
+    /// 实现了从帧队列中取数据、必要的重采样处理以及音频时钟的更新，为后续音频播放和同步提供数据。
+    /// </summary>
+    /// <param name="is"></param>
+    /// <returns>重采样后的数据大小（或直接返回原始数据大小，如果没有重采样）</returns>
     int audio_decode_frame(VideoState* is);
     void update_sample_display(VideoState* is, short* samples, int samples_size);
+	/// <summary>
+    /// 设置Clock的各项属性
+    /// </summary>
+    /// <param name="c">：is->Clock</param>
+    /// <param name="pts"></param>
+    /// <param name="serial"></param>
+    /// <param name="time">当前时间</param>
     void set_clock_at(Clock* c, double pts, int serial, double time);
     void sync_clock_to_slave(Clock* c, Clock* slave);
-
     float     ffp_get_property_float(int id, float default_value);
     void      ffp_set_property_float(int id, float value);
     //    int64_t   ffp_get_property_int64(int id, int64_t default_value);
@@ -109,6 +120,14 @@ private:
     int audio_thread(void* arg);
     int video_thread(void* arg);
     int subtitle_thread(void* arg);
+	/// <summary>
+    /// 计算音频时钟与主时钟（通常是视频时钟或外部时钟）之间的差异，
+    /// 然后根据这个差异决定是否需要增加或减少当前音频帧的采样数，
+    /// 从而使音频播放速度轻微调整，达到音视频同步的目的。
+    /// </summary>
+    /// <param name="is"></param>
+    /// <param name="nb_samples">原始采样数，如果不需要调整(即音频不为主时钟)，函数最终会返回这个值。</param>
+    /// <returns></returns>
     int synchronize_audio(VideoState* is, int nb_samples);
     /// <summary>
     /// 根据预期，设置AudioParams结构体;其中重点是sdl读取音频数据的回调函数
@@ -118,7 +137,7 @@ private:
     /// <param name="wanted_nb_channels">预期的声道数</param>
     /// <param name="wanted_sample_rate">预期的采样率</param>
     /// <param name="audio_hw_params">SDL预期希望的音频结构体</param>
-    /// <returns>SDL 打开的音频缓冲区的大小</returns>
+    /// <returns>SDL 打开的音频缓冲区的大小[size=samples×channels×bytes_per_sample]</returns>
     int audio_open(void* opaque, int64_t wanted_channel_layout, int wanted_nb_channels, int wanted_sample_rate, struct AudioParams* audio_hw_params);
     /// <summary>
     /// 初始化解码器上下文并打开解码器；开始对应的解码线程；
@@ -196,20 +215,50 @@ private:
     void video_image_display(VideoState* is);
     void stream_component_close(VideoState* is, int stream_index);
     void stream_close(VideoState* is);
+    /// <summary>
+    /// 返回当前时钟的时间值，即当前视频（或音频）播放的时间戳
+    /// </summary>
+    /// <param name="c"></param>
+    /// <returns></returns>
     double get_clock(Clock* c);
+	/// <summary>
+    /// 
+    /// </summary>
+    /// <param name="c">：is->的Clock</param>
+    /// <param name="pts"></param>
+    /// <param name="serial"></param>
     void set_clock(Clock* c, double pts, int serial);
     void set_clock_speed(Clock* c, double speed);
+	/// <summary>
+    /// 初始化时钟，设置速度为1.0，设置Clock的序列号，内部调用set_clock()
+    /// </summary>
+    /// <param name="c">：is->的Clock</param>
+    /// <param name="queue_serial">：is->PacketQueue的serial，该值在初始化包队列的时候默认值为0</param>
     void init_clock(Clock* c, int* queue_serial);
     int get_master_sync_type(VideoState* is);
     double get_master_clock(VideoState* is);
     void check_external_clock_speed(VideoState* is);
     void stream_seek(VideoState* is, int64_t pos, int64_t rel);
+	/// <summary>
+	/// 临时取消暂停（或者说“解冻”播放器）
+	/// </summary>
+	/// <param name="is"></param>
     void stream_toggle_pause(VideoState* is);
     void toggle_pause(VideoState* is);
+	/// <summary>
+    /// 当播放暂停时，通常不会自动获取并显示新帧。但在执行 seek 后，用户希望看到定位到新位置的那一帧。
+    /// </summary>
+    /// <param name="is"></param>
     void step_to_next_frame(VideoState* is);
-    double compute_target_delay(double delay, VideoState* is);
     /// <summary>
     /// 
+    /// </summary>
+    /// <param name="delay">上一帧的显示时间</param>
+    /// <param name="is"></param>
+    /// <returns>返回上一帧实际应该显示的时长</returns>
+    double compute_target_delay(double delay, VideoState* is);
+    /// <summary>
+    /// 计算上一帧的显示持续时间
     /// </summary>
     /// <param name="is"></param>
     /// <param name="vp">rindex指示的帧</param>

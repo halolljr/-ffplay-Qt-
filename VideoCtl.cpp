@@ -342,26 +342,15 @@ double VideoCtl::get_clock(Clock* c)
         return c->pts_drift + time - (time - c->last_updated) * (1.0 - c->speed);
     }
 }
-/// <summary>
-/// 设置Clock的各项属性
-/// </summary>
-/// <param name="c">：is->Clock</param>
-/// <param name="pts"></param>
-/// <param name="serial"></param>
-/// <param name="time"></param>
+
 void VideoCtl::set_clock_at(Clock* c, double pts, int serial, double time)
 {
-    c->pts = pts;
+    c->pts = pts;   /* 当前帧的pts */
     c->serial = serial;
-    c->last_updated = time;
-    c->pts_drift = c->pts - time;
+    c->last_updated = time;  /* 最后更新的时间，实际上是当前的一个系统时间 */
+    c->pts_drift = c->pts - time;   /* 当前帧pts和系统时间的差值，正常播放情况下两者的差值应该是比较固定的，因为两者都是以时间为基准进行线性增长 */
 }
-/// <summary>
-/// 
-/// </summary>
-/// <param name="c">：is->的Clock</param>
-/// <param name="pts">：init_clock函数调用传入NAN[浮点运算中产生了无效或未定义的结果]</param>
-/// <param name="serial">init_clock函数调用传入-1</param>
+
 void VideoCtl::set_clock(Clock* c, double pts, int serial)
 {
     //将微秒转化为秒
@@ -374,11 +363,7 @@ void VideoCtl::set_clock_speed(Clock* c, double speed)
     set_clock(c, get_clock(c), c->serial);
     c->speed = speed;
 }
-/// <summary>
-/// 初始化时钟，设置速度为1.0，设置Clock的序列号，内部调用set_clock()
-/// </summary>
-/// <param name="c">：is->的Clock</param>
-/// <param name="queue_serial">：is->PacketQueue的serial，该值在初始化包队列的时候默认值为0</param>
+
 void VideoCtl::init_clock(Clock* c, int* queue_serial)
 {
     c->speed = 1.0;
@@ -490,10 +475,6 @@ void VideoCtl::stream_seek(VideoState* is, int64_t pos, int64_t rel)
     }
 }
 
-/// <summary>
-/// 临时取消暂停（或者说“解冻”播放器）
-/// </summary>
-/// <param name="is"></param>
 void VideoCtl::stream_toggle_pause(VideoState* is)
 {
     if (is->paused) {
@@ -522,10 +503,6 @@ void VideoCtl::toggle_pause(VideoState* is)
     is->step = 0;
 }
 
-/// <summary>
-/// 当播放暂停时，通常不会自动获取并显示新帧。但在执行 seek 后，用户希望看到定位到新位置的那一帧。
-/// </summary>
-/// <param name="is"></param>
 void VideoCtl::step_to_next_frame(VideoState* is)
 {
     /* if the stream is paused unpause it, then step */
@@ -538,23 +515,34 @@ void VideoCtl::step_to_next_frame(VideoState* is)
 
 double VideoCtl::compute_target_delay(double delay, VideoState* is)
 {
-    double sync_threshold, diff = 0;
+    //合理的同步阈值
+    double sync_threshold;
+    //视频时钟与主时钟（可能是音频时钟）的差值
+    double diff = 0;
 
-    /* update delay to follow master synchronisation source */
     if (get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER) {
-        /* if video is slave, we try to correct big delays by
-        duplicating or deleting a frame */
-        diff = get_clock(&is->vidclk) - get_master_clock(is);
 
-        /* skip or repeat frame. We take into account the
-        delay to compute the threshold. I still don't know
-        if it is the best guess */
+		//首先计算出视频时钟与主时钟（可能是音频时钟）的差值
+        diff = get_clock(&is->vidclk) - get_master_clock(is);
+        
+        //通过上述计算，sync_threshold 被限定在 40 毫秒到 100 毫秒之间。
+        //分三种情况
+        //delay > AV_SYNC_THRESHOLD_MAX = 0.1秒，则sync_threshold = 0.1秒
+        //delay <AV_SYNC_THRESHOLD_MIN=0.04秒，则sync_threshold = 0.04秒
+		//AV_SYNC_THRESHOLD_MIN = 0.0.4秒 <= delay <= AV_SYNC_THRESHOLD_MAX=0.1秒，则sync_threshold为delay本身
         sync_threshold = FFMAX(AV_SYNC_THRESHOLD_MIN, FFMIN(AV_SYNC_THRESHOLD_MAX, delay));
+        
         if (!std::isnan(diff) && fabs(diff) < is->max_frame_duration) {
+            // 视频落后（视频时钟比主时钟慢）且偏差超过阈值（视频比音频快，且当前帧的显示时间足够长)
             if (diff <= -sync_threshold)
+                //帧的显示时间被缩短，甚至可能立即切换到下一帧
                 delay = FFMAX(0, delay + diff);
+
+            //视频超前（视频时钟比主时钟快）且偏差超过阈值，同时当前延时大于帧复制阈值
             else if (diff >= sync_threshold && delay > AV_SYNC_FRAMEDUP_THRESHOLD)
                 delay = delay + diff;
+
+            //视频超前且偏差超过阈值，但当前延时较小（视频比音频快，但当前帧的显示时间较短)
             else if (diff >= sync_threshold)
                 delay = 2 * delay;
         }
@@ -673,33 +661,51 @@ void VideoCtl::video_refresh(void* opaque, double* remaining_time)
             if (is->paused)
                 goto display;
 
+			/*如果视频播放过快，则重复播放上⼀帧，以等待⾳频；
+			如果视频播放过慢，则丢帧追赶⾳频。实现的⽅式是，参考audio clock，计算上⼀帧（在屏幕上的那
+			个画⾯）还应显示多久（含帧本身时⻓），然后与系统时刻对⽐，是否该显示下⼀帧了。*/
             /* compute nominal last_duration */
+
             last_duration = vp_duration(is, lastvp, vp);
             //            qDebug() << "last_duration ......" << last_duration;
             delay = compute_target_delay(last_duration, is);
             //            qDebug() << "delay ......" << delay;
             time = av_gettime_relative() / 1000000.0;
+
+			//如果当前时间还未达到显示下一帧的时刻，则计算剩余等待时间（通过取当前剩余时间与预计差值的较小值更新）
+            //然后跳转到显示部分，继续显示当前帧。
             if (time < is->frame_timer + delay) {
                 //                 qDebug() << "(is->frame_timer + delay) - time " << is->frame_timer + delay - time;
                 *remaining_time = FFMIN(is->frame_timer + delay - time, *remaining_time);
                 goto display;
             }
 
+            //当达到切换帧的时刻后，更新 is->frame_timer，使其累加延时（delay），准备下一帧显示的基准时间。
             is->frame_timer += delay;
+
+            //如果延时 delay 大于零且系统时间与更新后的计时器之间的差距超过了一个允许的最大同步阈值（AV_SYNC_THRESHOLD_MAX）
+            //说明内部计时器落后于系统时间太多，可能会导致长时间的滞后或累积误差
             if (delay > 0 && time - is->frame_timer > AV_SYNC_THRESHOLD_MAX)
                 is->frame_timer = time;
 
+            //1. 更新视频时钟
             SDL_LockMutex(is->pictq.mutex);
             if (!std::isnan(vp->pts))
                 update_video_pts(is, vp->pts, vp->pos, vp->serial);
             SDL_UnlockMutex(is->pictq.mutex);
             //            qDebug() << "debug " << __LINE__;
+            
+            //2. 丢帧逻辑：判断是否需要丢弃当前帧
+            //由于前面的frame_timer已更新要播放的一帧的时刻，因此这里要播放完这一帧是否还能追赶上当前时刻
             if (frame_queue_nb_remaining(&is->pictq) > 1) {
                 Frame* nextvp = frame_queue_peek_next(&is->pictq);
                 duration = vp_duration(is, vp, nextvp);
-                if (!is->step && (framedrop > 0 || (framedrop && get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER)) && time > is->frame_timer + duration) {
+                if (!is->step && (framedrop > 0 || (framedrop && get_master_sync_type(is) != AV_SYNC_VIDEO_MASTER)) 
+                    && time > is->frame_timer + duration) {
                     is->frame_drops_late++;
                     qDebug() << "frame_drops_late  " << is->frame_drops_late;
+                    //切换到将下一要播放的帧并将其视为“已播放”
+                    //“丢帧”
                     frame_queue_next(&is->pictq);
                     goto retry;
                 }
@@ -739,7 +745,7 @@ void VideoCtl::video_refresh(void* opaque, double* remaining_time)
                     }
                 }
             }
-
+            //切换到下一要播放的帧
             frame_queue_next(&is->pictq);
             is->force_refresh = 1;
             //            qDebug() << "debug " << __LINE__;
@@ -816,7 +822,7 @@ int VideoCtl::get_video_frame(VideoState* is, AVFrame* frame)
     return got_picture;
 }
 
-
+//音频解码线程
 int VideoCtl::audio_thread(void* arg)
 {
     VideoState* is = (VideoState*)arg;
@@ -946,14 +952,6 @@ void VideoCtl::update_sample_display(VideoState* is, short* samples, int samples
     }
 }
 
-/// <summary>
-/// 计算音频时钟与主时钟（通常是视频时钟或外部时钟）之间的差异，
-/// 然后根据这个差异决定是否需要增加或减少当前音频帧的采样数，
-/// 从而使音频播放速度轻微调整，达到音视频同步的目的。
-/// </summary>
-/// <param name="is"></param>
-/// <param name="nb_samples">原始采样数，如果不需要调整(即音频不为主时钟)，函数最终会返回这个值。</param>
-/// <returns></returns>
 int VideoCtl::synchronize_audio(VideoState* is, int nb_samples)
 {
     int wanted_nb_samples = nb_samples;
@@ -995,11 +993,6 @@ int VideoCtl::synchronize_audio(VideoState* is, int nb_samples)
     return wanted_nb_samples;
 }
 
-/// <summary>
-/// 实现了音频解码、必要的重采样处理以及音频时钟的更新，为后续音频播放和同步提供数据。
-/// </summary>
-/// <param name="is"></param>
-/// <returns>重采样后的数据大小（或直接返回原始数据大小，如果没有重采样）</returns>
 int VideoCtl::audio_decode_frame(VideoState* is)
 {
     int data_size, resampled_data_size; //用于保存原始数据大小和重采样后的数据大小。
@@ -1023,7 +1016,7 @@ int VideoCtl::audio_decode_frame(VideoState* is)
         frame_queue_next(&is->sampq);
     } while (af->serial != is->audioq.serial);
     //end
-    //计算当前音频帧中采样数据所占的字节数
+    //计算当前音频帧中数据所占的字节数
     data_size = av_samples_get_buffer_size(NULL, av_frame_get_channels(af->frame),
         af->frame->nb_samples,
         (AVSampleFormat)af->frame->format, 1);
@@ -1083,6 +1076,7 @@ int VideoCtl::audio_decode_frame(VideoState* is)
         if (!is->audio_buf1)
             return AVERROR(ENOMEM);
         //调用重采样函数
+        //返回成功转换后的样本数
         len2 = swr_convert(is->swr_ctx, out, out_count, in, af->frame->nb_samples);
         if (len2 < 0) {
             av_log(NULL, AV_LOG_ERROR, "swr_convert() failed\n");
@@ -1104,6 +1098,7 @@ int VideoCtl::audio_decode_frame(VideoState* is)
     audio_clock0 = is->audio_clock;
     /* update the audio clock with the pts */
     if (!std::isnan(af->pts))
+        //audio_clock 的计算仍然基于原始帧的信息，而不是重采样后的数据。
         is->audio_clock = af->pts + (double)af->frame->nb_samples / af->frame->sample_rate;
     else
         is->audio_clock = NAN;
@@ -1123,6 +1118,7 @@ void sdl_audio_callback(void* opaque, Uint8* stream, int len)
     int audio_size, len1;
     //单例模式
     VideoCtl* pVideoCtl = VideoCtl::GetInstance();
+    //提前获取以便于后续调整音频时钟（例如补偿音频硬件缓冲延迟），使得更新后的时钟能更贴近实际播放时刻。
     audio_callback_time = av_gettime_relative();
     while (len > 0) {
         // 从帧队列读取缓存
@@ -1242,7 +1238,16 @@ void sdl_audio_callback(void* opaque, Uint8* stream, int len)
     /* Let's assume the audio driver that is used by SDL has two periods. */
     if (!std::isnan(is->audio_clock)) {
         double audio_clock = is->audio_clock / pVideoCtl->ffp_get_playback_rate();
-        pVideoCtl->set_clock_at(&is->audclk, audio_clock - (double)(2 * is->audio_hw_buf_size + is->audio_write_buf_size) / is->audio_tgt.bytes_per_sec, is->audio_clock_serial, audio_callback_time / 1000000.0);
+        //为什么不直接使用audio_decode_frame中的af->pts 
+        //因为这个值代表了解码帧的时间戳，但它没有反映数据从解码到实际输出之间的延迟。
+        //实际上，解码后的音频数据需要先进入硬件缓冲区，再经过一段延迟后才会被播放。
+        //为了准确同步音视频，时钟更新时需要考虑这一部分缓冲延迟（由 audio_hw_buf_size 和 audio_write_buf_size 表示）。
+        //audio_clock - (double)(2 * is->audio_hw_buf_size + is->audio_write_buf_size) / is->audio_tgt.bytes_per_sec
+        //对 is->audio_clock 进行了补偿，从而得到更接近实际播放时刻的时间戳。同时，audio_callback_time 作为当前回调的时间记录，也被传入以更新时钟的最后更新时间和漂移值。
+        //虽然在一开始获取 audio_callback_time 时没有考虑延迟，但在 set_clock_at 中通过减去由缓冲区大小和未写入数据计算出的延迟，确保最终设置的 pts 能反映实际播放的音频时间，进而计算出准确的 pts_drift。
+        pVideoCtl->set_clock_at(&is->audclk, 
+            audio_clock - (double)(2 * is->audio_hw_buf_size + is->audio_write_buf_size) / is->audio_tgt.bytes_per_sec, 
+            is->audio_clock_serial, audio_callback_time / 1000000.0);
         pVideoCtl->sync_clock_to_slave(&is->extclk, &is->audclk);
     }
 }
@@ -1250,6 +1255,19 @@ void sdl_audio_callback(void* opaque, Uint8* stream, int len)
 int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted_nb_channels, int wanted_sample_rate,
     struct AudioParams* audio_hw_params)
 {
+	//typedef struct SDL_AudioSpec
+	//{
+	//	int freq;                   // 采样率
+	//	SDL_AudioFormat format;      // 采样格式 (如 AUDIO_S16SYS, AUDIO_F32SYS)
+	//	Uint8 channels;              // 通道数
+	//	Uint8 silence;               // 静音时填充值
+	//	Uint16 samples;              // 音频缓冲区大小
+	//	Uint16 padding;              // 填充（未使用）
+	//	Uint32 size;                 // 缓冲区总大小（字节）
+	//	SDL_AudioCallback callback;  // 回调函数
+	//	void* userdata;              // 用户数据
+	//} SDL_AudioSpec;
+
     SDL_AudioSpec wanted_spec, spec;
     const char* env;
     //提供备选的通道数和采样率列表
@@ -1259,6 +1277,7 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
     
     //设置为 next_sample_rates 数组最后一个元素的索引，通常用于选择一个较高的采样率作为备用。
     int next_sample_rate_idx = FF_ARRAY_ELEMS(next_sample_rates) - 1;
+
 	//获取环境变量 SDL_AUDIO_CHANNELS 的值。如果设置了这个环境变量，用户期望的通道数就由这个变量指定。
     env = SDL_getenv("SDL_AUDIO_CHANNELS");
     if (env) {
@@ -1266,20 +1285,26 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
         wanted_nb_channels = atoi(env);
         wanted_channel_layout = av_get_default_channel_layout(wanted_nb_channels);
     }
+
+    //如果通道格式不符合预期
     if (!wanted_channel_layout || wanted_nb_channels != av_get_channel_layout_nb_channels(wanted_channel_layout)) {
         wanted_channel_layout = av_get_default_channel_layout(wanted_nb_channels);
+        //移除立体声降混（stereo downmix）的标志
         wanted_channel_layout &= ~AV_CH_LAYOUT_STEREO_DOWNMIX;
     }
     wanted_nb_channels = av_get_channel_layout_nb_channels(wanted_channel_layout);
+    
     wanted_spec.channels = wanted_nb_channels;
     wanted_spec.freq = wanted_sample_rate;
     if (wanted_spec.freq <= 0 || wanted_spec.channels <= 0) {
         av_log(NULL, AV_LOG_ERROR, "Invalid sample rate or channel count!\n");
         return -1;
     }
+
     //选择一个“适合的”备选采样率
     while (next_sample_rate_idx && next_sample_rates[next_sample_rate_idx] >= wanted_spec.freq)
         next_sample_rate_idx--;
+
     wanted_spec.format = AUDIO_S16SYS;
     wanted_spec.silence = 0;
     //wanted_spec.freq / SDL_AUDIO_MAX_CALLBACKS_PER_SEC--计算每个回调周期目标处理的样本数量。
@@ -1290,6 +1315,8 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
     wanted_spec.samples = FFMAX(SDL_AUDIO_MIN_BUFFER_SIZE, 2 << av_log2(wanted_spec.freq / SDL_AUDIO_MAX_CALLBACKS_PER_SEC));
     wanted_spec.callback = sdl_audio_callback;
     wanted_spec.userdata = opaque;
+
+    //打开音频设备（预期的，打开后实际的）
     while (SDL_OpenAudio(&wanted_spec, &spec) < 0) {
         av_log(NULL, AV_LOG_WARNING, "SDL_OpenAudio (%d channels, %d Hz): %s\n",
             wanted_spec.channels, wanted_spec.freq, SDL_GetError());
@@ -1305,6 +1332,8 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
         }
         wanted_channel_layout = av_get_default_channel_layout(wanted_spec.channels);
     }
+
+    //实际打开的通道数和想要的通道数不一致
     if (spec.channels != wanted_spec.channels) {
         wanted_channel_layout = av_get_default_channel_layout(spec.channels);
         if (!wanted_channel_layout) {
@@ -1313,6 +1342,7 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
             return -1;
         }
     }
+
     //设定音频播放参数
     switch (spec.format)
     {
@@ -1335,12 +1365,14 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
         audio_hw_params->fmt = AV_SAMPLE_FMT_U8;
         break;
     }
+
     //audio_hw_params->fmt = AV_SAMPLE_FMT_FLT;
     //    audio_hw_params->fmt = AV_SAMPLE_FMT_S16;
     audio_hw_params->freq = spec.freq;
     audio_hw_params->channel_layout = wanted_channel_layout;
     audio_hw_params->channels = spec.channels;
-    //计算一帧大小
+
+    //计算一个采样点的大小
     audio_hw_params->frame_size = av_samples_get_buffer_size(NULL, audio_hw_params->channels, 1, audio_hw_params->fmt, 1);
     //计算一秒的大小
     audio_hw_params->bytes_per_sec = av_samples_get_buffer_size(NULL, audio_hw_params->channels, audio_hw_params->freq, audio_hw_params->fmt, 1);
