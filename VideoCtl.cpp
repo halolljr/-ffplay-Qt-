@@ -1296,7 +1296,6 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
         wanted_channel_layout &= ~AV_CH_LAYOUT_STEREO_DOWNMIX;
     }
     wanted_nb_channels = av_get_channel_layout_nb_channels(wanted_channel_layout);
-    
     wanted_spec.channels = wanted_nb_channels;
     wanted_spec.freq = wanted_sample_rate;
     if (wanted_spec.freq <= 0 || wanted_spec.channels <= 0) {
@@ -1375,7 +1374,7 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
     audio_hw_params->channel_layout = wanted_channel_layout;
     audio_hw_params->channels = spec.channels;
 
-    //计算一个采样点的大小
+    //一帧（1 个样本）的多声道音频数据大小。
     audio_hw_params->frame_size = av_samples_get_buffer_size(NULL, audio_hw_params->channels, 1, audio_hw_params->fmt, 1);
     //计算一秒的大小
     audio_hw_params->bytes_per_sec = av_samples_get_buffer_size(NULL, audio_hw_params->channels, audio_hw_params->freq, audio_hw_params->fmt, 1);

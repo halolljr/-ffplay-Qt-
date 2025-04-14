@@ -91,7 +91,7 @@ typedef struct AudioParams {
 	int channels;	
 	int64_t channel_layout;
 	enum AVSampleFormat fmt;
-	int frame_size;
+	int frame_size;	//一帧（1 个样本）的多声道音频数据大小。[AVCodecContext的frame_size：每帧单个通道的采样点数]
 	int bytes_per_sec;
 } AudioParams;
 
