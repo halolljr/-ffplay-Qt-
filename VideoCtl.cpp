@@ -1030,6 +1030,7 @@ int VideoCtl::audio_decode_frame(VideoState* is)
     //根据音频同步需求调整采样数。
     wanted_nb_samples = synchronize_audio(is, af->frame->nb_samples);
     //配置重采样（SWR）上下文
+    //如果解码帧的格式和sdl支持的格式不一致
     if (af->frame->format != is->audio_src.fmt ||
         dec_channel_layout != is->audio_src.channel_layout ||
         af->frame->sample_rate != is->audio_src.freq ||
@@ -1075,6 +1076,7 @@ int VideoCtl::audio_decode_frame(VideoState* is)
                 return -1;
             }
         }
+        //回先清空原来的内存再次申请
         av_fast_malloc(&is->audio_buf1, &is->audio_buf1_size, out_size);
         if (!is->audio_buf1)
             return AVERROR(ENOMEM);
@@ -1087,6 +1089,7 @@ int VideoCtl::audio_decode_frame(VideoState* is)
         }
         if (len2 == out_count) {
             av_log(NULL, AV_LOG_WARNING, "audio buffer is probably too small\n");
+            //做个安全检查
             if (swr_init(is->swr_ctx) < 0)
                 swr_free(&is->swr_ctx);
         }
@@ -1289,7 +1292,7 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
         wanted_channel_layout = av_get_default_channel_layout(wanted_nb_channels);
     }
 
-    //如果通道格式不符合预期
+    //AVCodecContext 的 channel_layout 参数有时候是“不完整”或者“不一致”的。
     if (!wanted_channel_layout || wanted_nb_channels != av_get_channel_layout_nb_channels(wanted_channel_layout)) {
         wanted_channel_layout = av_get_default_channel_layout(wanted_nb_channels);
         //移除立体声降混（stereo downmix）的标志
@@ -1303,10 +1306,10 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
         return -1;
     }
 
-    //选择一个“适合的”备选采样率
+    //从 192000 开始向前查找，直到找到一个 比 wanted_spec.freq 小的采样率，作为 fallback 的开始点。
     while (next_sample_rate_idx && next_sample_rates[next_sample_rate_idx] >= wanted_spec.freq)
         next_sample_rate_idx--;
-
+    //SDL的参数
     wanted_spec.format = AUDIO_S16SYS;
     wanted_spec.silence = 0;
     //wanted_spec.freq / SDL_AUDIO_MAX_CALLBACKS_PER_SEC--计算每个回调周期目标处理的样本数量。
@@ -1318,13 +1321,20 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
     wanted_spec.callback = sdl_audio_callback;
     wanted_spec.userdata = opaque;
 
-    //打开音频设备（预期的，打开后实际的）
+    //尽力按照你给的 wanted_spec 打开设备，但实际成功后会把设备最终使用的真实参数填入 spec！
+    //尝试用预期的参数去打开sdl设备；如若失败，则会进入到while循环自动寻找合适的参数
     while (SDL_OpenAudio(&wanted_spec, &spec) < 0) {
+
         av_log(NULL, AV_LOG_WARNING, "SDL_OpenAudio (%d channels, %d Hz): %s\n",
             wanted_spec.channels, wanted_spec.freq, SDL_GetError());
+
+        //从 next_nb_channels 数组中取一个备选通道数，用来替换当前的 wanted_spec.channels
         wanted_spec.channels = next_nb_channels[FFMIN(7, wanted_spec.channels)];
+
+        //如果 next_nb_channels[...] 返回的是 0（意味着当前通道数没有备选项），那么就要尝试 换采样率：
         if (!wanted_spec.channels) {
             wanted_spec.freq = next_sample_rates[next_sample_rate_idx--];
+            //将通道数还原为最初用户传入的值（重新开始尝试该通道数在新采样率下能否成功打开）
             wanted_spec.channels = wanted_nb_channels;
             if (!wanted_spec.freq) {
                 av_log(NULL, AV_LOG_ERROR,
@@ -1332,10 +1342,12 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
                 return -1;
             }
         }
+        //重新根据当前尝试的 channels 获取合适的声道布局
         wanted_channel_layout = av_get_default_channel_layout(wanted_spec.channels);
     }
 
     //实际打开的通道数和想要的通道数不一致
+    //因为后续还需要wanted_channel_layout，而spec的结构体没有通道布局变量
     if (spec.channels != wanted_spec.channels) {
         wanted_channel_layout = av_get_default_channel_layout(spec.channels);
         if (!wanted_channel_layout) {
@@ -1345,7 +1357,7 @@ int VideoCtl::audio_open(void* opaque, int64_t wanted_channel_layout, int wanted
         }
     }
 
-    //设定音频播放参数
+    //将实际sdl支持的播放格式映射到ffmpeg对应格式上
     switch (spec.format)
     {
     case AUDIO_U8:

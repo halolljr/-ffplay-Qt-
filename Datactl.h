@@ -103,7 +103,7 @@ typedef struct Clock {
 	double speed;	// 时钟速度控制，⽤于控制播放速度
 	int serial;           // 播放序列，所谓播放序列就是⼀段连续的播放动作，⼀个seek操作会启动⼀段新的播放序列
 	int paused;	// = 1 说明是暂停状态
-	int* queue_serial;    // 指向packet_serial
+	int* queue_serial;    // 指向packet_serial，指针
 } Clock;
 
 /* Common struct for handling all types of decoded data and allocated render buffers. */
@@ -413,7 +413,7 @@ static int packet_queue_get(PacketQueue* q, AVPacket* pkt, int block, int* seria
 			q->duration -= pkt1->pkt.duration;
 			//返回AVPacket，这⾥发⽣⼀次AVPacket结构体拷⻉，AVPacket的data只拷贝了指针
 			*pkt = pkt1->pkt;
-			//如果需要输出serial，把serial输出
+			//更新frame_queue的serial
 			if (serial)	
 				*serial = pkt1->serial;
 			//释放节点内存,只是释放节点，⽽不是释放AVPacket
@@ -571,7 +571,7 @@ static int decoder_decode_frame(Decoder* d, AVFrame* frame, AVSubtitle* sub) {
 							frame->pts = av_rescale_q(frame->pts, d->avctx->pkt_timebase, tb);
 						}
 						else if (d->next_pts != AV_NOPTS_VALUE) {
-							// 如果frame->pts不正常则使用上一帧更新的next_pts和next_pts_tb
+							// 如果frame->pts不正常则使用预估的下一帧更新的next_pts和next_pts_tb
 							// 转成{1, frame->sample_rate}
 							frame->pts = av_rescale_q(d->next_pts, d->next_pts_tb, tb);
 						}
